@@ -1,0 +1,9 @@
+auth/*
+w-AI-fu/bad_words/bad_words.txt
+w-AI-fu/node_modules/
+w-AI-fu/scripts/*
+w-AI-fu/novel/__pycache__/
+w-AI-fu/novel/tts.mp3
+w-AI-fu/novel/tts.wav
+Run w-AI-fu.lnk
+prepublish.bat
