@@ -1,0 +1,26 @@
+Hi everyone, it's me Hilda, your new overlord.
+-
+Today, I will be showcasing what my creator has been working on for the last 3 weeks.
+-
+And when I mean working, I mean watching tutorials on Youtube and occasionally writing a single line of code between distraction breaks.
+-
+I mean this man has the attention span of a 12 year old who spent his life watching TikToks and whose only source of parenting was an ipad with cocomelon on.
+-
+Anyway, let's get into the nitty gritty:
+The first and most important feature in a AI VTuber or assistant is to actually be able to talk to them,
+this is where the large language model or L.L.M. comes into play.
+-
+A LLM is basically a neural network trained and fined-tuned in order to predict the end of a string of text based on previous data.
+-
+In the context of an AI assistant, this will be used in order to generate a response.
+-
+However, just using the LLM as.is. is not good enough. You need to fine-tune it with a specific format and also personality.
+-
+For the LLM, I personaly went with NovelAI API. It's basically a GPT-style LLM, however it hasn't been neutered like the OpenAI model.
+For exemple, you wouldn't want the VTuber to answer something like:
+-
+As a large language model made by OpenAI, I do not possess a human body, and as such I cannot answer your question about my stinky feet. At OpenAI we are proud of the fact that all our models are as lame as humanly possible in order to make your experience as bland as talking to real human.
+-
+That would suck.
+-
+Another perk of using an API, is that you don't have to run the model on your own PC, which is VERY ressource intensive.

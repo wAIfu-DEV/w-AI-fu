@@ -1,0 +1,15 @@
+{
+  "name": "w-ai-fu",
+  "version": "1.0.0",
+  "description": "AI Waifu / Vtuber",
+  "main": "app.js",
+  "scripts": {
+    "launch": "node app.js",
+    "build": "npx tsc"
+  },
+  "author": "w-AI-fu DEV",
+  "license": "GPL3",
+  "devDependencies": {
+    "typescript": "^5.0.4"
+  }
+}
