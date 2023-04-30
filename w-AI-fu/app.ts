@@ -295,7 +295,7 @@ function startLLM() {
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
 
     LLM.process = cproc.spawn('python', ['novel_llm.py'],
-        { cwd: './novel', detached: true, shell: true, env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
+        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     LLM.running = true;
 }
 
@@ -304,13 +304,12 @@ function startTTS() {
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
 
     TTS.process = cproc.spawn('python', ['novel_tts.py'],
-        { cwd: './novel', detached: true, shell: true, env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
+        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     TTS.running = true;
 }
 
 function startLiveChat() {
-    CHAT.process = cproc.spawn('python', ['twitchchat.py'],
-        { cwd: './twitch' });
+    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch' });
     CHAT.running = true;
 }
 

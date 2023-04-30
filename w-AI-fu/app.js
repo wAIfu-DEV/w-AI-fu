@@ -259,13 +259,13 @@ function summonProcesses(mode) {
 function startLLM() {
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
-    LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', detached: true, shell: true, env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
+    LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     LLM.running = true;
 }
 function startTTS() {
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
-    TTS.process = cproc.spawn('python', ['novel_tts.py'], { cwd: './novel', detached: true, shell: true, env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
+    TTS.process = cproc.spawn('python', ['novel_tts.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     TTS.running = true;
 }
 function startLiveChat() {
