@@ -302,6 +302,8 @@ async function sendToLLM(prompt) {
 async function handleCommand(command) {
     if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
         command = '!say ' + command;
+        if (wAIfu.input_mode === InputMode.Voice)
+            put('\n');
     }
     if (command.length > 0 && command[0] !== '!')
         return command;

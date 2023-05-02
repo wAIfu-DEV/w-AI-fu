@@ -356,6 +356,7 @@ async function sendToLLM(prompt: string) {
 async function handleCommand(command: string): Promise<string | null> {
     if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
         command = '!say ' + command;
+        if (wAIfu.input_mode === InputMode.Voice) put('\n');
     }
 
     if (command.length > 0 && command[0] !== '!')
