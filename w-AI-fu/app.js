@@ -37,6 +37,7 @@ class Config {
     character_name = '';
     user_name = '';
     is_voice_input = false;
+    parrot_mode = false;
     read_live_chat = false;
     twitch_channel_name = '';
     chat_read_timeout_sec = 2;
@@ -299,6 +300,9 @@ async function sendToLLM(prompt) {
     return response;
 }
 async function handleCommand(command) {
+    if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
+        command = '!say ' + command;
+    }
     if (command.length > 0 && command[0] !== '!')
         return command;
     if (command === '')
