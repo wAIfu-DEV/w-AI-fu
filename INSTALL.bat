@@ -1,16 +1,19 @@
 @echo off
 
+echo Installing nodejs dependencies ...
+echo.
+
 cd w-AI-fu
-cd install
+call npm install
 
 echo Installing python dependencies ...
 echo.
 
+cd install
 call pip install -r py_requirements.txt
 
 echo.
 echo Creating shortcut ...
-echo.
 
 call cscript /b shortcut.vbs
 

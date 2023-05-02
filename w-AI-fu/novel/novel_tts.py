@@ -9,6 +9,7 @@ from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 audio = pyaudio.PyAudio()
+device_index = 0
 
 @app.route('/api', methods=['POST'])
 async def api():
@@ -48,7 +49,7 @@ def play_tts():
                                       channels=1, #wave_file.getnchannels(),
                                       rate=wave_file.getframerate(),
                                       output=True,
-                                      output_device_index=7) # Set the input device index to the virtual audio cable
+                                      output_device_index=device_index) # Set the input device index to the virtual audio cable
     # Read data from the wave file and capture it from the virtual audio cable
     data = wave_file.readframes(8192) #1024
     while data:
@@ -60,7 +61,9 @@ def play_tts():
     wave_file.close()
 
 if __name__ == '__main__':
-    #list_devices()
+    f = open('../devices/device.txt', 'r')
+    device_index = int(f.read())
+    f.close()
     app.run(host='127.0.0.1', port=7850)
 
 

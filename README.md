@@ -9,7 +9,7 @@ Before running w-AI-fu, follow these steps:
 
 1. Install [NodeJS](https://nodejs.org/en/download/releases) (prefer v19.8.1)
 2. Install [Python](https://www.python.org/downloads/) (prefer 3.10.10)
-3. Execute 'pip install -r py_requirements.txt' in order to install dependencies
+3. Run INSTALL.bat in order to install dependencies
 4. Put your [NovelAI](https://novelai.net/) account email/password in the 'auth\novel_user.txt' and 'auth\novel_pass.txt' respectivly
 
 You can now use w-AI-fu!
@@ -57,6 +57,12 @@ Here are the available parameters and their function:
 	Number of seconds without user input the character needs to wait before
 	reading a single chat message.
 	No effect if read_chat_live is off.
+
+### twitch_channel_name
+
+	Name of the twitch channel from which the messages should be read.
+	If the url of your channel is: https://www.twitch.tv/###
+	then the content of twitch_channel_name should be ###
 
 ### filter_bad_words
 

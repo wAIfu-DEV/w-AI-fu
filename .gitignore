@@ -5,5 +5,5 @@ w-AI-fu/scripts/*
 w-AI-fu/novel/__pycache__/
 w-AI-fu/novel/tts.mp3
 w-AI-fu/novel/tts.wav
+w-AI-fu/devices/device.txt
 Run w-AI-fu.lnk
-prepublish.bat

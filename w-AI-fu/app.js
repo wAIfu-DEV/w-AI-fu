@@ -134,6 +134,10 @@ function init() {
         put('Failed auth validation, exiting.\n');
         closeProgram(0);
     }
+    if (fs.existsSync('./devices/device.txt') === false) {
+        put('Could not find default audio device, asking user ...\n');
+        cproc.spawnSync('start', ['cmd /c "python audio_devices.py"'], { cwd: './devices', shell: true });
+    }
     put('Spawning subprocesses ...\n');
     summonProcesses(wAIfu.input_mode);
     put('Loaded w-AI-fu.\n\n');
