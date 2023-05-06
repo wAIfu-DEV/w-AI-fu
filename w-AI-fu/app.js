@@ -57,6 +57,8 @@ class wAIfuApp {
     started = false;
     is_debug = false;
     live_chat = false;
+    chat_reader_initialized = false;
+    input_skipped = false;
     bad_words = [];
     command_queue = [];
     last_chat_msg = '';
@@ -99,8 +101,10 @@ async function main() {
         const handled = (sender === 'CHAT')
             ? input
             : await handleCommand(input);
-        if (handled === null)
+        if (handled === null || handled === '') {
+            wAIfu.input_skipped = true;
             continue main_loop;
+        }
         let prompt = `${sender}: ${handled}\n${wAIfu.character.char_name}:`;
         let response = await sendToLLM(flattenMemory() + prompt);
         let displayed = (sender === 'CHAT')
@@ -175,7 +179,10 @@ function isAuthCorrect() {
     return true;
 }
 async function getInput(mode) {
-    put('> ');
+    if (wAIfu.input_skipped === false) {
+        put('> ');
+    }
+    wAIfu.input_skipped = false;
     let result = undefined;
     let sender = wAIfu.config.user_name;
     let pseudo = '';
@@ -188,7 +195,7 @@ async function getInput(mode) {
             break;
     }
     wAIfu.started = true;
-    if (!CHAT.running && wAIfu.live_chat) {
+    if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
         fetch(CHAT.api_url + '/run', {
             method: "POST",
             headers: {
@@ -196,7 +203,7 @@ async function getInput(mode) {
             },
             body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
         });
-        CHAT.running = true;
+        wAIfu.chat_reader_initialized = true;
     }
     if (result === null && wAIfu.live_chat) {
         const { message, name } = await getChatOrNothing();
@@ -216,8 +223,9 @@ async function getChatOrNothing() {
         return { message: '', name: '' };
     }
     let chatmsg = await getLastTwitchChat();
-    chatmsg.message = verifyText(sanitizeText(chatmsg.message));
-    if (wAIfu.last_chat_msg === chatmsg.message || chatmsg.message === null) {
+    chatmsg.message = sanitizeText(chatmsg.message);
+    let filtered = verifyText(chatmsg.message);
+    if (wAIfu.last_chat_msg === chatmsg.message || filtered === true) {
         return { message: '', name: '' };
     }
     else {
@@ -378,7 +386,7 @@ async function handleCommand(command) {
     }
 }
 function sanitizeText(text) {
-    return text.replace(/[^a-zA-Z .,]/g, '');
+    return text.replace(/[^a-zA-Z .,?!]/g, '');
 }
 function verifyText(text) {
     const low_text = text.toLowerCase();

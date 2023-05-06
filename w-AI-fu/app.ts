@@ -38,6 +38,8 @@ class wAIfuApp {
     started: boolean = false;
     is_debug: boolean = false;
     live_chat: boolean = false;
+    chat_reader_initialized: boolean = false;
+    input_skipped: boolean = false;
     bad_words: string[] = [];
     command_queue: string[] = [];
     last_chat_msg = '';
@@ -90,7 +92,10 @@ async function main() {
             ? input
             : await handleCommand(input);
 
-        if (handled === null) continue main_loop;
+        if (handled === null || handled === '') {
+            wAIfu.input_skipped = true;
+            continue main_loop;
+        }
 
         let prompt = `${sender}: ${handled}\n${wAIfu.character.char_name}:`;
         let response = await sendToLLM(flattenMemory() + prompt);
@@ -196,7 +201,10 @@ function isAuthCorrect(): boolean {
 }
 
 async function getInput(mode: InputMode) {
-    put('> ');
+    if(wAIfu.input_skipped === false) {
+        put('> ');
+    }
+    wAIfu.input_skipped = false;
 
     let result: string | null | undefined = undefined;
     let sender: string = wAIfu.config.user_name;
@@ -216,7 +224,7 @@ async function getInput(mode: InputMode) {
     // Because I can't seem to figure out how to initialize the damn
     //   thing from the pyhton script.
     // Initializes the Twitch Chat API script
-    if (!CHAT.running && wAIfu.live_chat) {
+    if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
         fetch(CHAT.api_url + '/run', {
             method: "POST",
             headers: {
@@ -224,7 +232,7 @@ async function getInput(mode: InputMode) {
             },
             body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
         });
-        CHAT.running = true;
+        wAIfu.chat_reader_initialized = true;
     }
 
     // If is timeout, read twitch chat
@@ -249,9 +257,11 @@ async function getChatOrNothing() {
     }
     // Get latest twitch chat message
     let chatmsg = await getLastTwitchChat();
-    chatmsg.message = verifyText(sanitizeText(chatmsg.message));
 
-    if (wAIfu.last_chat_msg === chatmsg.message || chatmsg.message === null) {
+    chatmsg.message = sanitizeText(chatmsg.message);
+    let filtered = verifyText(chatmsg.message);
+
+    if (wAIfu.last_chat_msg === chatmsg.message || filtered === true) {
         return { message: '', name: '' };
     }
     else {
@@ -441,7 +451,7 @@ async function handleCommand(command: string): Promise<string | null> {
 }
 
 function sanitizeText(text: string) {
-    return text.replace(/[^a-zA-Z .,]/g, '');
+    return text.replace(/[^a-zA-Z .,?!]/g, '');
 }
 
 function verifyText(text: string) {

@@ -11,6 +11,8 @@ Before running w-AI-fu, follow these steps:
 2. Install [Python](https://www.python.org/downloads/) (prefer 3.10.10)
 3. Run INSTALL.bat in order to install dependencies
 4. Put your [NovelAI](https://novelai.net/) account email/password in the 'auth\novel_user.txt' and 'auth\novel_pass.txt' respectivly
+5. (Not required, only for twitch) Put a Twitch [Oauth token](https://twitchapps.com/tmi/) (without the 'oauth:' part) inside of 'auth\twitch_oauth.txt'
+6. (Not required, only for twitch) In config.json, set read_chat_live to true and twitch_channel_name to the name of your channel.
 
 You can now use w-AI-fu!
 Use the 'run.bat' file or the 'Run w-AI-fu' shortcut to run the program.
@@ -46,8 +48,8 @@ Here are the available parameters and their function:
 ### read_chat_live
 
 	Will activate the ability for the character to read and respond
-	to live chat messages from a set twitch channel
-	(currently needs to modify code).
+	to live chat messages from a set twitch channel defined by
+	twitch_channel_name.
 	The chat message will be read after waiting for x seconds defined
 	by chat_read_timeout_sec.
 	Any voice/text input by the user will reset this timer.
