@@ -37,6 +37,7 @@ def parse_message(message):
 
 def on_message(ws, message):
     global started
+    print(message)
     if 'PING' in message:
         ws.send('PONG')
         return

@@ -25,6 +25,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = __importStar(require("fs"));
 const cproc = __importStar(require("child_process"));
+const fetch = require('node-fetch');
 const readline = require('readline/promises');
 const { resolve } = require('path');
 const rl = readline.createInterface(process.stdin, process.stdout);

@@ -1,6 +1,8 @@
 import * as fs from 'fs';
 import * as cproc from 'child_process';
 
+const fetch = require('node-fetch');
+
 const readline = require('readline/promises');
 const { resolve } = require('path');
 const rl = readline.createInterface(process.stdin, process.stdout);
