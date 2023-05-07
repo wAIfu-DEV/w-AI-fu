@@ -442,6 +442,7 @@ function init_get() {
     rl.on('line', e);
 }
 function textGet() {
+    debug('Awaiting text input ...\n');
     return new Promise((resolve) => {
         let text = null;
         let resolved = false;
