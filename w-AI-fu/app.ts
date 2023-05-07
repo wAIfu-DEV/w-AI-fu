@@ -309,6 +309,8 @@ function summonProcesses(mode: InputMode) {
 }
 
 function startLLM() {
+    if (LLM.running) return;
+
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
 
@@ -318,6 +320,8 @@ function startLLM() {
 }
 
 function startTTS() {
+    if (TTS.running) return;
+
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
 
@@ -327,11 +331,15 @@ function startTTS() {
 }
 
 function startLiveChat() {
+    if (CHAT.running) return;
+
     CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch' });
     CHAT.running = true;
 }
 
 function startSTT() {
+    if (STT.running) return;
+
     STT.process = cproc.spawn('python', ['speech.py'], { cwd: './speech' });
     STT.running = true;
 }
@@ -450,9 +458,11 @@ async function handleCommand(command: string): Promise<string | null> {
             switch (chat_toggle.toLowerCase()) {
                 case 'on':
                     wAIfu.live_chat = true;
+                    startLiveChat();
                     break;
                 case 'off':
                     wAIfu.live_chat = false;
+                    startLiveChat();
                     break;
                 default:
                     put('Invalid chat mode, must be either on or off\n');

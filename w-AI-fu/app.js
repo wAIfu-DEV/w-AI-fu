@@ -270,22 +270,30 @@ function summonProcesses(mode) {
     }
 }
 function startLLM() {
+    if (LLM.running)
+        return;
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
     LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     LLM.running = true;
 }
 function startTTS() {
+    if (TTS.running)
+        return;
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
     TTS.process = cproc.spawn('python', ['novel_tts.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     TTS.running = true;
 }
 function startLiveChat() {
+    if (CHAT.running)
+        return;
     CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch' });
     CHAT.running = true;
 }
 function startSTT() {
+    if (STT.running)
+        return;
     STT.process = cproc.spawn('python', ['speech.py'], { cwd: './speech' });
     STT.running = true;
 }
@@ -385,9 +393,11 @@ async function handleCommand(command) {
             switch (chat_toggle.toLowerCase()) {
                 case 'on':
                     wAIfu.live_chat = true;
+                    startLiveChat();
                     break;
                 case 'off':
                     wAIfu.live_chat = false;
+                    startLiveChat();
                     break;
                 default:
                     put('Invalid chat mode, must be either on or off\n');
