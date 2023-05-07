@@ -147,8 +147,7 @@ function init() {
     put('Spawning subprocesses ...\n');
     summonProcesses(wAIfu.input_mode);
     put('Loaded w-AI-fu.\n\n');
-    put('Commands: !mode [text, voice], !say [...], !script [_.txt], !history, '
-        + '!char, !reset, !stop, !save, !debug, !reload\n');
+    put('Commands: !mode [text, voice], !say [...], !script [_.txt], !chat [on, off], !history, !char, !reset, !stop, !save, !debug, !reload\n');
     init_get();
 }
 function flattenMemory() {
@@ -381,6 +380,20 @@ async function handleCommand(command) {
                     break;
             }
             return null;
+        case '!chat':
+            const chat_toggle = command.substring('!chat '.length, undefined).trim();
+            switch (chat_toggle.toLowerCase()) {
+                case 'on':
+                    wAIfu.live_chat = true;
+                    break;
+                case 'off':
+                    wAIfu.live_chat = false;
+                    break;
+                default:
+                    put('Invalid chat mode, must be either on or off\n');
+                    break;
+            }
+            return null;
         default:
             put('Invalid command.\n');
             return null;
@@ -430,13 +443,24 @@ function init_get() {
 }
 function textGet() {
     return new Promise((resolve) => {
-        if (wAIfu.live_chat && wAIfu.started)
+        let text = null;
+        let resolved = false;
+        if (wAIfu.live_chat && wAIfu.started) {
             setTimeout(() => {
-                resolve(null);
+                if (resolved)
+                    return;
+                debug('Input timeout.\n');
+                resolved = true;
+                resolve(text);
             }, wAIfu.config.chat_read_timeout_sec * 1000);
+        }
         const checkQueue = () => {
+            if (resolved)
+                return;
             if (wAIfu.command_queue.length > 0) {
-                const text = wAIfu.command_queue.shift();
+                debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
+                text = wAIfu.command_queue.shift();
+                resolved = true;
                 resolve(text);
             }
             else {
@@ -448,18 +472,29 @@ function textGet() {
 }
 function voiceGet() {
     return new Promise((resolve) => {
-        if (wAIfu.live_chat && wAIfu.started)
+        let text = null;
+        let resolved = false;
+        if (wAIfu.live_chat && wAIfu.started) {
             setTimeout(() => {
-                resolve(null);
+                if (resolved)
+                    return;
+                resolved = true;
+                resolve(text);
             }, wAIfu.config.chat_read_timeout_sec * 1000);
+        }
         const checkFile = () => {
+            if (resolved)
+                return;
             if (fs.existsSync('./speech/input.txt')) {
-                const text = fs.readFileSync('./speech/input.txt');
+                text = fs.readFileSync('./speech/input.txt').toString();
                 fs.unlinkSync('./speech/input.txt');
-                resolve(text.toString());
+                resolved = true;
+                resolve(text);
             }
             else if (wAIfu.command_queue.length > 0) {
-                const text = wAIfu.command_queue.shift();
+                debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
+                text = wAIfu.command_queue.shift();
+                resolved = true;
                 resolve(text);
             }
             else {

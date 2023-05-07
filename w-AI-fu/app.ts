@@ -156,8 +156,7 @@ function init() {
     summonProcesses(wAIfu.input_mode);
 
     put('Loaded w-AI-fu.\n\n');
-    put('Commands: !mode [text, voice], !say [...], !script [_.txt], !history, '
-        + '!char, !reset, !stop, !save, !debug, !reload\n');
+    put('Commands: !mode [text, voice], !say [...], !script [_.txt], !chat [on, off], !history, !char, !reset, !stop, !save, !debug, !reload\n');
 
     init_get();
 }
@@ -446,6 +445,20 @@ async function handleCommand(command: string): Promise<string | null> {
                     break;
             }
             return null;
+        case '!chat':
+            const chat_toggle = command.substring('!chat '.length, undefined).trim();
+            switch (chat_toggle.toLowerCase()) {
+                case 'on':
+                    wAIfu.live_chat = true;
+                    break;
+                case 'off':
+                    wAIfu.live_chat = false;
+                    break;
+                default:
+                    put('Invalid chat mode, must be either on or off\n');
+                    break;
+            }
+            return null;
         default:
             put('Invalid command.\n');
             return null;
@@ -504,16 +517,28 @@ function init_get() {
 
 // Async input.
 function textGet() {
+    debug('Awaiting text input ...\n');
     return new Promise<string | null | undefined>(
         (resolve) => {
-            if (wAIfu.live_chat && wAIfu.started)
+            let text: string | null = null;
+            let resolved: boolean = false;
+
+            if (wAIfu.live_chat && wAIfu.started) {
                 setTimeout(() => {
-                    resolve(null);
+                    if (resolved) return;
+                    debug('Input timeout.\n');
+                    resolved = true;
+                    resolve(text);
                 }, wAIfu.config.chat_read_timeout_sec * 1000);
+            }
 
             const checkQueue = () => {
+                if (resolved) return;
+
                 if (wAIfu.command_queue.length > 0) {
-                    const text = wAIfu.command_queue.shift();
+                    debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
+                    text = wAIfu.command_queue.shift()!;
+                    resolved = true;
                     resolve(text);
                 } else {
                     setTimeout(checkQueue, 250);
@@ -527,19 +552,30 @@ function textGet() {
 function voiceGet() {
     return new Promise<string | null | undefined>(
         (resolve) => {
-            if (wAIfu.live_chat && wAIfu.started)
+            let text: string | null = null;
+            let resolved: boolean = false;
+
+            if (wAIfu.live_chat && wAIfu.started) {
                 setTimeout(() => {
-                    resolve(null);
+                    if (resolved) return;
+                    resolved = true;
+                    resolve(text);
                 }, wAIfu.config.chat_read_timeout_sec * 1000);
+            }
 
             // My god what have I done
             const checkFile = () => {
+                if (resolved) return;
+
                 if (fs.existsSync('./speech/input.txt')) {
-                    const text = fs.readFileSync('./speech/input.txt');
+                    text = fs.readFileSync('./speech/input.txt').toString();
                     fs.unlinkSync('./speech/input.txt');
-                    resolve(text.toString());
+                    resolved = true;
+                    resolve(text);
                 } else if (wAIfu.command_queue.length > 0) {
-                    const text = wAIfu.command_queue.shift();
+                    debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
+                    text = wAIfu.command_queue.shift()!;
+                    resolved = true;
                     resolve(text);
                 } else {
                     setTimeout(checkFile, 250);
