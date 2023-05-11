@@ -25,10 +25,22 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const fs = __importStar(require("fs"));
 const cproc = __importStar(require("child_process"));
+const http = __importStar(require("http"));
 const fetch = require('node-fetch');
 const readline = require('readline/promises');
 const { resolve } = require('path');
 const rl = readline.createInterface(process.stdin, process.stdout);
+const hostname = '127.0.0.1';
+const port = 7860;
+const server = http.createServer((req, res) => {
+    if (req.method === 'POST') {
+        console.log('received POST request');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Hello World');
+    }
+});
+server.listen(port, hostname, () => { });
 var InputMode;
 (function (InputMode) {
     InputMode[InputMode["Text"] = 0] = "Text";
@@ -134,6 +146,7 @@ async function main() {
         if (is_chat)
             addChatMemory(pseudo, new_memory);
         await sendToTTS(displayed);
+        exposeCaptions('');
     }
 }
 function init() {
@@ -304,7 +317,7 @@ function startLLM() {
         return;
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
-    LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: true, shell: true });
+    LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     LLM.running = true;
 }
 function startTTS() {
@@ -313,7 +326,7 @@ function startTTS() {
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
     const tts_provider = (wAIfu.config.tts_use_playht) ? 'playht_tts.py' : 'novel_tts.py';
-    TTS.process = cproc.spawn('python', [tts_provider], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: true, shell: true });
+    TTS.process = cproc.spawn('python', [tts_provider], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     TTS.running = true;
 }
 function startLiveChat() {

@@ -1,11 +1,25 @@
 import * as fs from 'fs';
 import * as cproc from 'child_process';
+import * as http from 'http';
 
 const fetch = require('node-fetch');
 
 const readline = require('readline/promises');
 const { resolve } = require('path');
 const rl = readline.createInterface(process.stdin, process.stdout);
+
+const hostname = '127.0.0.1';
+const port = 7860;
+
+const server = http.createServer((req, res) => {
+    if (req.method === 'POST') {
+        console.log('received POST request');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'text/plain');
+        res.end('Hello World');
+    }
+});
+server.listen(port, hostname, () => {});
 
 enum InputMode {
     Text, Voice
@@ -135,6 +149,7 @@ async function main() {
         if (is_chat) addChatMemory(pseudo, new_memory);
 
         await sendToTTS(displayed);
+        exposeCaptions('');
     }
 }
 
@@ -354,7 +369,7 @@ function startLLM() {
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
 
     LLM.process = cproc.spawn('python', ['novel_llm.py'],
-        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: true, shell: true });
+        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     LLM.running = true;
 }
 
@@ -367,7 +382,7 @@ function startTTS() {
     const tts_provider = (wAIfu.config.tts_use_playht) ? 'playht_tts.py' : 'novel_tts.py';
 
     TTS.process = cproc.spawn('python', [tts_provider],
-        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: true, shell: true });
+        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
     TTS.running = true;
 }
 
