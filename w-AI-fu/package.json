@@ -1,6 +1,6 @@
 {
   "name": "w-ai-fu",
-  "version": "1.0.6",
+  "version": "1.0.8",
   "description": "AI Waifu / Vtuber",
   "main": "app.js",
   "scripts": {

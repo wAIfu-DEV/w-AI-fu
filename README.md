@@ -22,7 +22,7 @@ Use the 'run.bat' file or the 'Run w-AI-fu' shortcut to run the program.
 
 ## CONFIGURATION
 
-In order to modify default the default behaviour of w-AI-fu,
+In order to modify the default behaviour of w-AI-fu,
 you will need to modify the 'config.json' file.
 
 Here are the available parameters and their function:

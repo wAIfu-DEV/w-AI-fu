@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Control Panel • w-AI-fu</title>
+    <link rel="stylesheet" href="style/style.css">
+    <link rel="shortcut icon" href="../icon.ico" type="image/x-icon">
+</head>
+<body>
+    <Header>
+        <img src="../icon.ico">
+        <h1>w-AI-fu Control Panel</h1>
+    </Header>
+    <Section>
+        <h2>Console</h2>
+        <Console>
+            <ConsoleView>
+                <ConsoleViewSection>
+                    <ConsoleBubbleOut>
+                        Hello, World!
+                    </ConsoleBubbleOut>
+                </ConsoleViewSection>
+            </ConsoleView>
+            <ConsoleInputWrapper>
+                <ConsoleNameField contenteditable="true" title="User Name Field">
+                    USER
+                </ConsoleNameField>
+                <ConsoleInputField contenteditable="true" placeholder="Write your prompt here" title="Input Field"></ConsoleInputField>
+                <ConsoleInputSendButton title="Send Input">
+                    Send
+                </ConsoleInputSendButton>
+            </ConsoleInputWrapper>
+            <ConsoleCommands>
+                <ConsoleCommandButton title="Factory-reset the memory of the character">
+                    Reset
+                </ConsoleCommandButton>
+                <ConsoleCommandButton title="Print additional informations for debugging">
+                    Debug
+                </ConsoleCommandButton>
+                <ConsoleCommandButton title="Saves the current chat history to w-AI-fu/saved/">
+                    Save
+                </ConsoleCommandButton>
+            </ConsoleCommands>
+        </Console>
+    </Section>
+    <Section>
+        <h2>Character</h2>
+        <CharacterSheet>
+            <Label>Name</Label>
+            <InputField contenteditable="true"></InputField>
+            <Spacer></Spacer>
+            <Label>Description</Label>
+            <InputField contenteditable="true"></InputField>
+            <Spacer></Spacer>
+            <Label>Example Dialogue</Label>
+            <InputField contenteditable="true"></InputField>
+            <Spacer></Spacer>
+            <Label>Voice Seed</Label>
+            <InputField contenteditable="true"></InputField>
+        </CharacterSheet>
+    </Section>
+    <script src="scripts/main.js"></script>
+</body>
+</html>

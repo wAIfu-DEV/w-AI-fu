@@ -5,18 +5,30 @@ import wave
 from os import path
 from pydub import AudioSegment
 from boilerplate import API
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
 
 app = Flask(__name__)
 audio = pyaudio.PyAudio()
 device_index = 0
 
-@app.route('/api', methods=['POST'])
+@app.route('/api', methods=['POST', 'OPTIONS'])
 async def api():
+    if request.method == "OPTIONS": # CORS preflight
+        return _build_cors_preflight_response()
+
     data = request.get_json()
     await generate_tts(speak=data['data'][0], voice_seed=data['data'][1])
     play_tts()
-    return jsonify({'message': 'OK'}), 200
+    response = jsonify({'message': 'OK'})
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    return response, 200
+
+def _build_cors_preflight_response():
+    response = make_response()
+    response.headers.add("Access-Control-Allow-Origin", "*")
+    response.headers.add('Access-Control-Allow-Headers', "*")
+    response.headers.add('Access-Control-Allow-Methods', "*")
+    return response
 
 async def generate_tts(speak, voice_seed):
     async with API() as api_handler:

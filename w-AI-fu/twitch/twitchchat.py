@@ -58,7 +58,7 @@ def on_close(ws, close_status_code, close_msg):
 
 def on_open(ws):
     global channel
-    f = open('../../auth/twitch_oauth.txt', 'r')
+    f = open('../../auth/(OPTIONAL) twitch_oauth.txt', 'r')
     oauth = f.read()
     f.close()
     ws.send(f'PASS oauth:{oauth}')

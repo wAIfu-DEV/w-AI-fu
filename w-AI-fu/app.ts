@@ -11,6 +11,11 @@ enum InputMode {
     Text, Voice
 }
 
+// see ./package.json
+class Package {
+    version: string = '';
+}
+
 // see ../config.json
 class Config {
     character_name: string = '';
@@ -18,6 +23,7 @@ class Config {
     is_voice_input: boolean = false;
     parrot_mode: boolean = false;
     read_live_chat: boolean = false;
+    tts_use_playht: boolean = false;
     twitch_channel_name: string = '';
     chat_read_timeout_sec: number = 2;
     filter_bad_words: boolean = true;
@@ -47,6 +53,7 @@ class wAIfuApp {
     last_chat_msg = '';
     input_mode: InputMode = InputMode.Text;
     config: Config = new Config();
+    package: Package = new Package();
     character: Character = new Character();
     memory: Memory = new Memory();
 }
@@ -90,7 +97,8 @@ async function main() {
 
     main_loop: while (true) {
         const { input, sender, pseudo } = await getInput(wAIfu.input_mode);
-        const handled = (sender === 'CHAT')
+        const is_chat = sender === 'CHAT';
+        const handled = (is_chat)
             ? input
             : await handleCommand(input);
 
@@ -99,11 +107,18 @@ async function main() {
             continue main_loop;
         }
 
-        let prompt = `${sender}: ${handled}\n${wAIfu.character.char_name}:`;
-        let response = await sendToLLM(flattenMemory() + prompt);
+        const identifier = (is_chat)
+            ? `[CHAT] ${pseudo}`
+            : sender;
 
-        let displayed: string | null = (sender === 'CHAT')
-            ? `${pseudo} said: ${handled}.${response}`
+        let additional_memories = '';
+        if (is_chat) additional_memories += getChatMemories(pseudo);
+
+        let prompt = `${identifier}: ${handled}\n${wAIfu.character.char_name}:`;
+        let response = await sendToLLM(flattenMemory(additional_memories) + prompt);
+
+        let displayed: string | null = (is_chat)
+            ? ` ${pseudo} said "${handled}".${response}`
             : response;
 
         if (verifyText(displayed)) {
@@ -112,16 +127,23 @@ async function main() {
         }
 
         put(`${wAIfu.character.char_name}:${displayed}`);
+        exposeCaptions(displayed);
 
-        wAIfu.memory.short_term.push(
-            `${sender}: ${input}\n${wAIfu.character.char_name}:${response}`);
+        const new_memory = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`;
+
+        wAIfu.memory.short_term.push(new_memory);
+        if (is_chat) addChatMemory(pseudo, new_memory);
+
         await sendToTTS(displayed);
     }
 }
 
 function init() {
     process.title = 'w-AI-fu';
-    put('Starting w-AI-fu ...\n');
+
+    wAIfu.package = getPackage();
+
+    put(`w-AI-fu ${wAIfu.package.version}\n`);
 
     put('Loading config informations ...\n');
     wAIfu.config = getConfig();
@@ -161,14 +183,14 @@ function init() {
     init_get();
 }
 
-function flattenMemory(): string {
-    let result = wAIfu.memory.long_term;
+function flattenMemory(additional: string): string {
+    let result = wAIfu.memory.long_term + additional;
 
     // Remove old short-term memory
     // Prevents character dillution
     // Increase the right-hand number to allow for greater memory capacity
-    // at the cost of a less faithul character
-    while (wAIfu.memory.short_term.length > 10) {
+    // at the cost of answers less faithul to the character.
+    while (wAIfu.memory.short_term.length > 4) {
         wAIfu.memory.short_term.shift();
     }
 
@@ -181,7 +203,9 @@ function flattenMemory(): string {
 function isAuthCorrect(): boolean {
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
-    const OAU = fs.readFileSync('../auth/twitch_oauth.txt').toString().trim();
+    const OAU = fs.readFileSync('../auth/(OPTIONAL) twitch_oauth.txt').toString().trim();
+    const PTA = fs.readFileSync('../auth/(OPTIONAL) play-ht_auth.txt').toString().trim();
+    const PTU = fs.readFileSync('../auth/(OPTIONAL) play-ht_user.txt').toString().trim();
 
     if (USR === '') {
         put('Validation Error: NovelAI account mail adress is missing from auth/novel_user.txt\n');
@@ -194,7 +218,17 @@ function isAuthCorrect(): boolean {
     }
 
     if (OAU === '' && wAIfu.config.read_live_chat === true) {
-        put('Validation Error: twitch oauth token is missing from auth/twitch_oauth.txt\n');
+        put('Validation Error: twitch oauth token is missing from auth/(OPTIONAL) twitch_oauth.txt\n');
+        return false;
+    }
+
+    if (PTA === '' && wAIfu.config.tts_use_playht === true) {
+        put('Validation Error: play.ht auth token is missing from auth/(OPTIONAL) play-ht_auth.txt\n');
+        return false;
+    }
+
+    if (PTU === '' && wAIfu.config.tts_use_playht === true) {
+        put('Validation Error: play.ht user token is missing from auth/(OPTIONAL) play-ht_user.txt\n');
         return false;
     }
 
@@ -260,9 +294,9 @@ async function getChatOrNothing() {
     let chatmsg = await getLastTwitchChat();
 
     chatmsg.message = sanitizeText(chatmsg.message);
-    let filtered = verifyText(chatmsg.message);
+    //let filtered = verifyText(chatmsg.message);
 
-    if (wAIfu.last_chat_msg === chatmsg.message || filtered === true) {
+    if (wAIfu.last_chat_msg === chatmsg.message) { //|| filtered === true) {
         return { message: '', name: '' };
     }
     else {
@@ -273,6 +307,11 @@ async function getChatOrNothing() {
 
 function getConfig() {
     const buff = fs.readFileSync('../config.json');
+    return JSON.parse(buff.toString());
+}
+
+function getPackage() {
+    const buff = fs.readFileSync('./package.json');
     return JSON.parse(buff.toString());
 }
 
@@ -315,7 +354,7 @@ function startLLM() {
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
 
     LLM.process = cproc.spawn('python', ['novel_llm.py'],
-        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
+        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: true, shell: true });
     LLM.running = true;
 }
 
@@ -325,8 +364,10 @@ function startTTS() {
     const USR = fs.readFileSync('../auth/novel_user.txt').toString().trim();
     const PSW = fs.readFileSync('../auth/novel_pass.txt').toString().trim();
 
-    TTS.process = cproc.spawn('python', ['novel_tts.py'],
-        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW } });
+    const tts_provider = (wAIfu.config.tts_use_playht) ? 'playht_tts.py' : 'novel_tts.py';
+
+    TTS.process = cproc.spawn('python', [tts_provider],
+        { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: true, shell: true });
     TTS.running = true;
 }
 
@@ -388,36 +429,42 @@ async function handleCommand(command: string): Promise<string | null> {
     const com = com_spl[0];
 
     switch (com) {
-        case '!say':
+        case '!say': {
             await sendToTTS(command.substring('!say '.length, undefined));
             return null;
-        case '!reset':
+        }
+        case '!reset': {
             // Removes short-term memory
             // Basically resets the character to initial state.
             wAIfu.memory.short_term = [];
             return null;
-        case '!history':
-            put('\x1B[1;30m' + flattenMemory() + '\n' + '\x1B[0m');
+        }
+        case '!history': {
+            put('\x1B[1;30m' + flattenMemory('') + '\n' + '\x1B[0m');
             return null;
-        case '!debug':
+        }
+        case '!debug': {
             // Shows additional debug informations (json data etc...)
             wAIfu.is_debug = true;
             return null;
-        case '!stop':
+        }
+        case '!stop': {
             // Interrupt application
             closeProgram(0);
             return null;
-        case '!char':
+        }
+        case '!char': {
             // Similar to !history, but prints character infos from .json file
             put(`\x1B[1;30m(${wAIfu.character.char_persona})\n\n${wAIfu.character.example_dialogue}\x1B[0m\n`);
             return null;
-        case '!save':
-            const f = './saved/log_' + new Date().getTime().toString()
-                + '.txt';
+        }
+        case '!save': {
+            const f = './saved/log_' + new Date().getTime().toString() + '.txt';
             put('\x1B[1;30m' + 'saved to: ' + resolve(f) + '\n' + '\x1B[0m');
-            fs.writeFileSync(f, flattenMemory());
+            fs.writeFileSync(f, flattenMemory(''));
             return null;
-        case '!script':
+        }
+        case '!script': {
             const fpath = command.substring('!script '.length, undefined).trim();
             const fpath_resolved = `./scripts/${fpath}`;
             if (!fs.existsSync(fpath_resolved)) {
@@ -429,7 +476,8 @@ async function handleCommand(command: string): Promise<string | null> {
             for (let line of lines)
                 await sendToTTS(line);
             return null;
-        case '!reload':
+        }
+        case '!reload': {
             put('Reloading files ...\n');
             wAIfu.config = getConfig();
             wAIfu.character = getCharacter();
@@ -437,7 +485,8 @@ async function handleCommand(command: string): Promise<string | null> {
             closeSubProcesses();
             summonProcesses(wAIfu.input_mode);
             return null;
-        case '!mode':
+        }
+        case '!mode': {
             const mode = command.substring('!mode '.length, undefined).trim();
             switch (mode.toLowerCase()) {
                 case 'text':
@@ -453,7 +502,8 @@ async function handleCommand(command: string): Promise<string | null> {
                     break;
             }
             return null;
-        case '!chat':
+        } 
+        case '!chat': {
             const chat_toggle = command.substring('!chat '.length, undefined).trim();
             switch (chat_toggle.toLowerCase()) {
                 case 'on':
@@ -462,13 +512,13 @@ async function handleCommand(command: string): Promise<string | null> {
                     break;
                 case 'off':
                     wAIfu.live_chat = false;
-                    startLiveChat();
                     break;
                 default:
                     put('Invalid chat mode, must be either on or off\n');
                     break;
             }
             return null;
+        }
         default:
             put('Invalid command.\n');
             return null;
@@ -492,8 +542,12 @@ function verifyText(text: string) {
 
 // Sends LLM output to the TTS generator.
 async function sendToTTS(say: string) {
+    let default_voice = (wAIfu.config.tts_use_playht === true)
+        ? 'Scarlett'
+        : 'galette';
+    
     let voice = (wAIfu.character.voice == '')
-        ? 'galette'
+        ? default_voice
         : wAIfu.character.voice;
 
     const payload = JSON.stringify({ data: [say, voice] });
@@ -629,4 +683,91 @@ function put(text: string) {
 function debug(text: string) {
     if (wAIfu.is_debug)
         process.stdout.write('\x1B[1;30m' + text + '\x1B[0m');
+}
+
+function exposeCaptions(text: string) {
+    fs.writeFileSync('./captions/transcript.txt', text);
+}
+
+function getChatMemories(user: string): string {
+
+    const db = fetchChatDatabase();
+    const logs = db.get(user);
+    let result = '';
+
+    if (logs === undefined) return result;
+
+    for (let s of logs) {
+        result += Buffer.from(s, 'base64').toString('utf8');
+    }
+
+    return result;
+}
+
+function addChatMemory(user: string, memory: string) {
+    const db = fetchChatDatabase();
+    const logs = db.get(user);
+
+    const b64_mem = Buffer.from(memory, 'utf8').toString('base64');
+
+    if (logs === undefined) {
+        db.set(user, [b64_mem]);
+        return;
+    };
+
+    while (logs.length > 3)
+        logs.shift();
+
+    logs.push(b64_mem);
+
+    updateChatDatabase(db);
+}
+
+function fetchChatDatabase(): Map<string, string[]> {
+    let fcontent = fs.readFileSync('./data/chat_user_db.csv', { encoding: 'utf8' });
+    return parseChatDatabase(fcontent);
+}
+
+function updateChatDatabase(obj: Map<string, string[]>) {
+    let s = flattenChatDatabase(obj);
+    fs.writeFileSync('./data/chat_user_db.csv', s);
+}
+
+function parseChatDatabase(text: string): Map<string, string[]> {
+    const lines: string[] = text.split(/\r\n|\n/);
+
+    let csv_map: Map<string, string[]> = new Map();
+
+    for (let i = 0; i < lines.length; ++i) {
+        if (lines[i].trim() === '') break;
+        let spl: string[] = lines[i].split(',');
+
+        if (spl.length !== 5) {
+            put(`Critical Error: Incorrect formating of chat_user_db.csv file at line ${i}. Expected line length of 5, got ${spl.length}\n`);
+            closeProgram(1);
+        }
+
+        csv_map.set(spl[0], [spl[1], spl[2], spl[3], spl[4]]);
+    }
+    return csv_map;
+}
+
+function flattenChatDatabase(obj: Map<string, string[]>): string {
+    let flat = '';
+
+    for (let [key, value] of obj) {
+
+        let log = Array.from(value);
+        while(log.length > 4)
+            log.shift();
+        
+        let line = key
+        
+        for (let s of log) {
+            line += ',' + s;
+        }
+        flat += line + '\n';
+    }
+
+    return flat;
 }
