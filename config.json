@@ -1,11 +1,1 @@
-{
-    "character_name": "Hilda",
-    "user_name": "USER",
-    "is_voice_input": false,
-    "parrot_mode": false,
-    "read_live_chat": false,
-    "tts_use_playht": false,
-    "chat_read_timeout_sec": 2,
-    "twitch_channel_name": "",
-    "filter_bad_words": true
-}
+{"character_name":"Hilda","user_name":"USER","is_voice_input":false,"parrot_mode":false,"read_live_chat":false,"tts_use_playht":false,"chat_read_timeout_sec":2,"twitch_channel_name":"","filter_bad_words":true,"audio_device":0}

@@ -6,7 +6,9 @@ import requests
 import pyaudio
 import wave
 import time
+import json
 
+from os import system
 from os import path
 from pydub import AudioSegment
 from flask import Flask, request, jsonify
@@ -14,6 +16,8 @@ from flask import Flask, request, jsonify
 app = Flask(__name__)
 audio = pyaudio.PyAudio()
 device_index = 0
+
+interrupt_next = False
 
 
 pht_auth = ''
@@ -48,6 +52,16 @@ def get_tts_file(transcription_id):
     response = requests.get(url, headers=headers)
     return response.json()
 
+@app.route('/loaded', methods=['GET'])
+async def loaded():
+    return '', 200
+
+@app.route('/interrupt', methods=['GET'])
+async def interrupt():
+    global interrupt_next
+    interrupt_next = True
+    return '', 200
+
 
 @app.route('/api', methods=['POST'])
 def api():
@@ -80,7 +94,8 @@ def generate_tts(speak, voice_seed):
 
 
 def play_tts():
-    global audio
+    global audio, interrupt_next
+    interrupt_next = False
     # Convert .mp3 to .wav
     path = os.path.abspath('../ffmpeg/ffmpeg.exe')
     os.system(f'"{path}" -loglevel quiet -y -i tts.mp3 tts.wav')
@@ -95,6 +110,9 @@ def play_tts():
     # Read data from the wave file and capture it from the virtual audio cable
     data = wave_file.readframes(8192)
     while data:
+        if interrupt_next:
+            interrupt_next = False
+            break
         virtual_cable_stream.write(data)
         data = wave_file.readframes(8192)
     # Clean up resources
@@ -104,13 +122,14 @@ def play_tts():
 
 
 if __name__ == '__main__':
-    f = open('../devices/device.txt', 'r')
-    device_index = int(f.read())
+    f = open('../../config.json', 'r')
+    obj = json.loads(f.read())
     f.close()
-    f = open('../../auth/(OPTIONAL) play-ht_auth.txt', 'r')
+    device_index = int(obj["audio_device"])
+    f = open('../../UserData/auth/play-ht_auth.txt', 'r')
     pht_auth = f.read()
     f.close()
-    f = open('../../auth/(OPTIONAL) play-ht_user.txt', 'r')
+    f = open('../../UserData/auth/play-ht_user.txt', 'r')
     pht_user = f.read()
     f.close()
     print(pht_user)

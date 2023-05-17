@@ -11,55 +11,163 @@
 <body>
     <Header>
         <img src="../icon.ico">
-        <h1>w-AI-fu Control Panel</h1>
+        <h1>w-AI-fu ▸ Control Panel</h1>
+        <VersionString></VersionString>
     </Header>
     <Section>
         <h2>Console</h2>
         <Console>
+            <ConsoleHead>
+                <select id="loaded-char" title="Choose the character you want to speak to"></select>
+            </ConsoleHead>
             <ConsoleView>
-                <ConsoleViewSection>
-                    <ConsoleBubbleOut>
-                        Hello, World!
-                    </ConsoleBubbleOut>
-                </ConsoleViewSection>
+                <!--<ConsoleBubbleFiltered>
+                    [ FILTERED ]
+                    <p>Filter matched "" in ""</p>
+                    <FilteredOptionsButton>
+                        Unfilter
+                    </FilteredOptionsButton>
+                </ConsoleBubbleFiltered>-->
             </ConsoleView>
             <ConsoleInputWrapper>
                 <ConsoleNameField contenteditable="true" title="User Name Field">
                     USER
                 </ConsoleNameField>
                 <ConsoleInputField contenteditable="true" placeholder="Write your prompt here" title="Input Field"></ConsoleInputField>
-                <ConsoleInputSendButton title="Send Input">
+                <ConsoleInputSendButton title="Send Input" onclick="sendInput()">
                     Send
                 </ConsoleInputSendButton>
             </ConsoleInputWrapper>
             <ConsoleCommands>
-                <ConsoleCommandButton title="Factory-reset the memory of the character">
+                <ConsoleCommandButton class="BigRedButton" title="Prevents the character from speaking any further and blanks out the captions." onclick="interrupt()">
+                    Interrupt
+                </ConsoleCommandButton>
+                <ConsoleCommandButton title="Factory-reset the memory of the character" onclick="clearConsole();sendCommand('!reset')">
                     Reset
                 </ConsoleCommandButton>
-                <ConsoleCommandButton title="Print additional informations for debugging">
+                <!--<ConsoleCommandButton title="Print additional informations for debugging" onclick="sendCommand('!debug')">
                     Debug
-                </ConsoleCommandButton>
-                <ConsoleCommandButton title="Saves the current chat history to w-AI-fu/saved/">
+                </ConsoleCommandButton>-->
+                <ConsoleCommandButton title="Saves the current chat history to UserData/saved/" onclick="sendCommand('!save')">
                     Save
                 </ConsoleCommandButton>
             </ConsoleCommands>
         </Console>
     </Section>
     <Section>
+        <h2>Configuration</h2>
+        <ConfigWrapper>
+            <Config>
+                <ConfigLine title="Interact with the character by speaking in your microphone">
+                    <Label>Voice Input</Label>
+                    <FlipFlop flip="off" flop="on" value="off" config="is_voice_input">off</FlipFlop>
+                </ConfigLine>
+                <Spacer></Spacer>
+                <ConfigLine title="Reads Twitch chat if not spoken to in n seconds (see 'Read chat after n seconds')">
+                    <Label>Read Twitch Chat</Label>
+                    <FlipFlop flip="off" flop="on" value="off" config="read_live_chat">off</FlipFlop>
+                </ConfigLine>
+                <Spacer></Spacer>
+                <ConfigLine title="Makes the character repeat everything you say or type">
+                    <Label>Parrot Mode</Label>
+                    <FlipFlop flip="off" flop="on" value="off" config="parrot_mode">off</FlipFlop>
+                </ConfigLine>
+            </Config>
+            <Config>
+                <ConfigLine>
+                    <Label>TTS Provider</Label>
+                    <FlipFlop flip="NovelAI" flop="Play.ht" value="NovelAI" config="tts_use_playht" standalone>NovelAI</FlipFlop>
+                </ConfigLine>
+                <Spacer></Spacer>
+                <ConfigLine title="Will start reading Twitch chats if user does not interact with for n seconds and 'Read Twitch Chat' is on">
+                    <Label>Read chat after n seconds</Label>
+                    <input class="NumberInputBox" inputmode="numeric" value="2" config="chat_read_timeout_sec">
+                </ConfigLine>
+                <Spacer></Spacer>
+                <ConfigLine title="Stops the character from saying potentially bad stuff, must be on if you plan on using it while streaming and not get banned">
+                    <Label>Filter Bad Words</Label>
+                    <FlipFlop flip="on" flop="off" value="on" config="filter_bad_words">on</FlipFlop>
+                </ConfigLine>
+            </Config>
+        </ConfigWrapper>
+        <ConfigLong>
+            <ConfigLine title="Stops the character from saying potentially bad stuff, must be on if you plan on using it while streaming and not get banned">
+                <Label>Output Audio Device</Label>
+                <select id="audio-device"></select>
+            </ConfigLine>
+        </ConfigLong>
+    </Section>
+    <Section>
         <h2>Character</h2>
         <CharacterSheet>
             <Label>Name</Label>
-            <InputField contenteditable="true"></InputField>
+            <InputField id="char_name" contenteditable="true" placeholder="Name of the character"></InputField>
             <Spacer></Spacer>
             <Label>Description</Label>
-            <InputField contenteditable="true"></InputField>
+            <InputField id="char_desc" contenteditable="true" placeholder="Short description of the character"></InputField>
             <Spacer></Spacer>
             <Label>Example Dialogue</Label>
-            <InputField contenteditable="true"></InputField>
+            <InputField id="char_exd" contenteditable="true" placeholder="Example dialogue displaying the character's personality, will be used as the character's long-term memory"></InputField>
+            <Spacer></Spacer>
+            <Label>Topics of interest (comma delimited)</Label>
+            <InputField id="char_topics" contenteditable="true" placeholder="List of topics the character will start talking"></InputField>
             <Spacer></Spacer>
             <Label>Voice Seed</Label>
-            <InputField contenteditable="true"></InputField>
+            <InputField id="char_voice" contenteditable="true" placeholder="Seed for the generation of the voice"></InputField>
+            <Spacer></Spacer>
+            <Label>Craziness</Label>
+            <RangeLine>
+                <input type="range" min="0" max="1" value="0.5" class="slider" step="0.01" id="craziness">
+                <Label id="craziness-label">0.5</Label>
+            </RangeLine>
+            <Spacer></Spacer>
+            <Label>Creativity</Label>
+            <RangeLine>
+                <input type="range" min="0" max="1" value="0.5" class="slider" step="0.01" id="creativity">
+                <Label id="creativity-label">0.5</Label>
+            </RangeLine>
+            <Spacer></Spacer>
+            <CharacterSaveButton>Save Character</CharacterSaveButton>
+            <CharacterDownloadButton>Download .json</CharacterDownloadButton>
         </CharacterSheet>
+    </Section>
+    <Section id="accounts-section">
+        <AuthBanner>
+            <h2>Accounts</h2>
+            <p>Hidden for privacy, hit 'expand' to show</p>
+            <DisplayAuthButton>Expand ▾</DisplayAuthButton>
+        </AuthBanner>
+        <Auth style="display: none;">
+            <ConfigLine>
+                <Label>NovelAI Mail</Label>
+                <input id="novel-mail" class="TextInputBox" type="email" value="" auth>
+            </ConfigLine>
+            <Spacer></Spacer>
+            <ConfigLine>
+                <Label>NovelAI Password</Label>
+                <input id="novel-pass" class="TextInputBox" type="password" value="" auth>
+            </ConfigLine>
+            <Spacer></Spacer>
+            <ConfigLine>
+                <Label>(OPTIONAL) Twitch Channel Name</Label>
+                <input id="twitch-name" class="TextInputBox" type="text" value="">
+            </ConfigLine>
+            <Spacer></Spacer>
+            <ConfigLine>
+                <Label>(OPTIONAL) Twitch OAuth Token</Label>
+                <input id="twitch-oauth" class="TextInputBox" type="password" value="" auth>
+            </ConfigLine>
+            <Spacer></Spacer>
+            <ConfigLine>
+                <Label>(OPTIONAL) Play.ht Auth Token</Label>
+                <input id="playht-auth" class="TextInputBox" type="password" value="" auth>
+            </ConfigLine>
+            <Spacer></Spacer>
+            <ConfigLine>
+                <Label>(OPTIONAL) Play.ht User Token</Label>
+                <input id="playht-user" class="TextInputBox" type="password" value="" auth>
+            </ConfigLine>
+        </Auth>
     </Section>
     <script src="scripts/main.js"></script>
 </body>

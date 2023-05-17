@@ -1,8 +1,10 @@
 import os
 import pyaudio  
 import wave
+import json
 
 from os import path
+from os import system
 from pydub import AudioSegment
 from boilerplate import API
 from flask import Flask, request, jsonify, make_response
@@ -10,6 +12,18 @@ from flask import Flask, request, jsonify, make_response
 app = Flask(__name__)
 audio = pyaudio.PyAudio()
 device_index = 0
+
+interrupt_next = False
+
+@app.route('/loaded', methods=['GET'])
+async def loaded():
+    return '', 200
+
+@app.route('/interrupt', methods=['GET'])
+async def interrupt():
+    global interrupt_next
+    interrupt_next = True
+    return '', 200
 
 @app.route('/api', methods=['POST', 'OPTIONS'])
 async def api():
@@ -50,7 +64,8 @@ def list_devices():
         print("Device {} = {}".format(info["index"], info["name"]))
 
 def play_tts():
-    global audio
+    global audio, interrupt_next
+    interrupt_next = False
     # Convert .mp3 to .wav
     path = os.path.abspath('../ffmpeg/ffmpeg.exe')
     os.system(f'"{path}" -loglevel quiet -y -i tts.mp3 tts.wav')
@@ -65,6 +80,9 @@ def play_tts():
     # Read data from the wave file and capture it from the virtual audio cable
     data = wave_file.readframes(8192) #1024
     while data:
+        if interrupt_next:
+            interrupt_next = False
+            break
         virtual_cable_stream.write(data)
         data = wave_file.readframes(8192)
     # Clean up resources
@@ -73,9 +91,10 @@ def play_tts():
     wave_file.close()
 
 if __name__ == '__main__':
-    f = open('../devices/device.txt', 'r')
-    device_index = int(f.read())
+    f = open('../../config.json', 'r')
+    obj = json.loads(f.read())
     f.close()
+    device_index = int(obj["audio_device"])
     app.run(host='127.0.0.1', port=7850)
 
 

@@ -9,19 +9,40 @@
 
 html {
     background-color: rgb(20, 25, 30);
-    color: rgb(200, 200, 220);
+    color: rgb(200, 210, 220);
 }
 
 body * {
     display: block;
 }
 
+::-webkit-scrollbar {
+    width: .5rem;
+    cursor: default;
+}
+ 
+::-webkit-scrollbar-thumb {
+    border-radius: 10px;
+    background-color: rgb(200, 210, 220);
+    cursor: default;
+}
+
+body::-webkit-scrollbar {
+    width: .65rem;
+    cursor: default;
+    border-left: solid 1px rgb(50, 60, 70);
+}
+
 Header {
+    margin: 1rem;
     display: flex;
     flex-direction: row;
     align-items: center;
-    padding: 1rem;
-    border-bottom: solid 1px rgb(50, 60, 70);
+    padding: .75rem;
+    border: solid 1px rgb(50, 60, 70);
+    border-radius: 1rem;
+    background-color: rgb(20, 25, 30);
+    box-shadow: rgba(0, 0, 0, 0.35) 0rem .5rem .5rem;
 }
 
 Header > img {
@@ -29,6 +50,15 @@ Header > img {
     aspect-ratio: 1 / 1;
     margin-right: 1.5rem;
     border-radius: .5rem;
+}
+
+Header > h1 {
+    flex-grow: 1;
+    font-weight: 100;    
+}
+
+VersionString {
+    color: rgb(50, 60, 70);
 }
 
 Section {
@@ -40,26 +70,88 @@ Console {
     margin: 1rem auto;
     display: flex;
     flex-direction: column;
-    height: 25rem;
+    height: 35rem;
     color: white;
     max-width: 50rem;
 }
 
 ConsoleView {
     padding: 1rem;
-    border-radius: 1rem 1rem 0px 0px;
-    background-color: black;
+    background-color: rgb(10, 15, 20);
     flex-grow: 1;
     overflow-y: scroll;
+    overflow-x: hidden;
+    border-left: solid 1px rgb(50, 60, 70);
+    border-right: solid 1px rgb(50, 60, 70);
 }
 
 ConsoleView::-webkit-scrollbar {
-    width: 5px;
+    width: .5rem;
+    cursor: default;
 }
  
 ConsoleView::-webkit-scrollbar-thumb {
     border-radius: 10px;
-    background-color: white;
+    cursor: default;
+    background-color: rgb(200, 210, 220);
+}
+
+ConsoleViewSection {
+    user-select: text;
+    margin-bottom: .75rem;
+    display: grid;
+}
+
+ConsoleBubbleOut {
+    user-select: text;
+    background-color: rgb(155, 62, 104);
+    border-radius: 1rem;
+    display: inline-block;
+    padding: .75rem;
+    justify-self: left;
+}
+
+ConsoleBubbleFiltered {
+    user-select: text;
+    border: solid 1px rgb(50, 60, 70);
+    background-color: rgb(20, 25, 30);
+    border-radius: 1rem;
+    display: inline-block;
+    padding: .75rem;
+    justify-self: left;
+}
+
+ConsoleBubbleFiltered > p {
+    padding: .75rem;
+    margin: .75rem 0px;
+    background-color: rgb(10, 15, 20);
+    border: solid 1px rgb(50, 60, 70);
+    border-radius: .75rem;
+    color: white;
+}
+
+FilteredOptionsButton {
+    cursor: pointer;
+    display: inline-block;
+    padding: .5rem;
+    border: solid 1px rgb(155, 62, 104);
+    background-color: rgb(155, 62, 104);
+    border-radius: 1rem;
+}
+
+FilteredOptionsButton:hover {
+    color: white;
+    background-color: rgb(122, 42, 78);
+    border-color: rgb(122, 42, 78);
+}
+
+ConsoleBubbleIn {
+    user-select: text;
+    background-color: royalblue;
+    border-radius: 1rem;
+    display: inline-block;
+    padding: .75rem;
+    justify-self: right;
 }
 
 ConsoleInputWrapper {
@@ -68,6 +160,17 @@ ConsoleInputWrapper {
     border: solid 1px rgb(50, 60, 70);
     border-radius: 0px 0px 1rem 1rem;
     margin-bottom: 1rem;
+}
+
+ConsoleHead {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    border: solid 1px rgb(50, 60, 70);
+    border-radius: 1rem 1rem 0px 0px;
+    padding: .5rem;
+    font-weight: 600;
+    color: rgba(200, 210, 220, .85);
 }
 
 ConsoleNameField {
@@ -103,12 +206,14 @@ ConsoleInputField[placeholder]:empty:focus::before {
 }
 
 ConsoleInputField::-webkit-scrollbar {
-    height: 5px;
+    cursor: default;
+    height: .5rem;
 }
  
 ConsoleInputField::-webkit-scrollbar-thumb {
     border-radius: 10px;
-    background-color: white;
+    cursor: default;
+    background-color: rgb(200, 210, 220);
 }
 
 ConsoleInputSendButton {
@@ -135,7 +240,6 @@ ConsoleCommandButton:hover {
     background-color: rgb(50, 60, 70);
 }
 
-
 CharacterSheet {
     margin: 1rem auto;
     max-width: 50rem;
@@ -145,12 +249,220 @@ InputField {
     min-height: 1rem;
     padding: .5rem;
     border: solid 1px rgb(50, 60, 70);
+    border-radius: .5rem;
 }
 
 InputField:focus {
     background-color: rgb(10, 15, 20);
 }
 
+InputField[placeholder]:empty:before {
+    content: attr(placeholder);
+    color: rgb(50, 60, 70);
+}
+
+InputField[placeholder]:empty:focus::before {
+    content: "";
+}
+
 Spacer {
     margin-bottom: 2rem;
+}
+
+Config {
+    margin: 1rem;
+    width: 24rem;
+    max-width: 35rem;
+}
+
+ConfigLong {
+    display: block;
+    width: 50rem;
+    margin: 1rem auto;
+}
+
+Auth {
+    display: none;
+    margin: 1rem auto;
+    max-width: 50rem;
+}
+
+ConfigLine {
+    display: flex;
+    flex-direction: row;
+    border-radius: 1rem;
+    border: solid 1px rgb(50, 60, 70);
+    align-items: center;
+    padding: .75rem;
+}
+
+ConfigLine > Label {
+    flex-grow: 1;
+}
+
+ConfigWrapper {
+    display: flex;
+    flex-direction: row;
+    justify-content: center;
+}
+
+FlipFlop {
+    cursor: pointer;
+    padding: .5rem .75rem;
+    border-radius: 1rem;
+    border: solid 1px rgb(50, 60, 70);
+}
+
+FlipFlop:hover {
+    background-color: rgb(50, 60, 70);
+}
+
+FlipFlop[value="on"] {
+    color: white;
+    background-color: rgb(155, 62, 104);
+    border-color: rgb(155, 62, 104);
+}
+
+FlipFlop[value="on"]:hover {
+    background-color: rgb(122, 42, 78);
+    border-color: rgb(122, 42, 78);
+}
+
+.NumberInputBox {
+    background-color: transparent;
+    border-radius: 1rem;
+    color: rgb(200, 210, 220);
+    min-height: 1rem;
+    padding: .5rem .75rem;
+    border: solid 1px rgb(50, 60, 70);
+    width: 1.5rem;
+    text-align: center;
+}
+
+.NumberInputBox:focus {
+    background-color: rgb(10, 15, 20);
+}
+
+.TextInputBox {
+    background-color: transparent;
+    border-radius: 1rem;
+    color: rgb(200, 210, 220);
+    min-height: 1rem;
+    padding: .5rem .75rem;
+    border: solid 1px rgb(50, 60, 70);
+    width: 15rem;
+    text-align: center;
+}
+
+.TextInputBox:focus {
+    background-color: rgb(10, 15, 20);
+}
+
+select {
+    background-color: rgb(20, 25, 30);
+    border-radius: .75rem;
+    border: solid 1px rgb(50, 60, 70);
+    padding: .5rem;
+    color: rgb(200, 210, 220);
+    font-size: 1rem;
+}
+
+select:hover {
+    background-color: rgb(10, 15, 20);
+}
+
+#char_exd {
+    max-height: 20rem;
+    overflow-y: scroll;
+}
+
+#char_exd::-webkit-scrollbar {
+    width: .5rem;
+    cursor: default;
+}
+ 
+#char_exd::-webkit-scrollbar-thumb {
+    cursor: default;
+    border-radius: 10px;
+    background-color: rgb(200, 210, 220);
+}
+
+CharacterSaveButton {
+    cursor: pointer;
+    display: inline-block;
+    border: solid 1px rgb(50, 60, 70);
+    padding: .75rem;
+    border-radius: 1rem;
+    margin-right: .75rem;
+}
+
+CharacterSaveButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
+CharacterDownloadButton {
+    cursor: pointer;
+    display: inline-block;
+    border: solid 1px rgb(50, 60, 70);
+    padding: .75rem;
+    border-radius: 1rem;
+}
+
+CharacterDownloadButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
+AuthBanner {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+}
+
+AuthBanner > h2 {
+    display: inline-block;
+}
+
+AuthBanner > p {
+    flex-grow: 1;
+    padding: 0px 2rem;
+    display: inline-block;
+    color: rgb(50, 60, 70);
+}
+
+DisplayAuthButton {
+    cursor: pointer;
+    display: inline-block;
+    padding: .25rem .75rem;
+    padding-top: .35rem;
+    border-radius: 1rem;
+    border: solid 1px rgb(50, 60, 70);
+}
+
+DisplayAuthButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
+.slider {
+    flex-grow: 1;
+    margin-right: .75rem;
+}
+
+RangeLine {
+    display: flex;
+    flex-direction: row;
+}
+
+RangeLine > Label {
+    width: 2rem;
+}
+
+.BigRedButton {
+    background-color: rgb(155, 62, 104);
+    border-color: rgb(155, 62, 104);
+}
+
+.BigRedButton:hover {
+    color: white;
+    background-color: rgb(122, 42, 78);
+    border-color: rgb(122, 42, 78);
 }

@@ -1,5 +1,6 @@
 import websocket
 import re
+from os import system
 
 from flask import Flask, jsonify, request
 
@@ -8,6 +9,10 @@ started = False
 last_usr = ''
 last_msg = ''
 channel = ''
+
+@app.route('/loaded', methods=['GET'])
+async def loaded():
+    return '', 200
 
 @app.route('/api', methods=['GET'])
 async def api():
@@ -58,7 +63,7 @@ def on_close(ws, close_status_code, close_msg):
 
 def on_open(ws):
     global channel
-    f = open('../../auth/(OPTIONAL) twitch_oauth.txt', 'r')
+    f = open('../../UserData/auth/twitch_oauth.txt', 'r')
     oauth = f.read()
     f.close()
     ws.send(f'PASS oauth:{oauth}')

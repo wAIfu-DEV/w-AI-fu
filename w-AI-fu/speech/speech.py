@@ -1,5 +1,6 @@
 import speech_recognition as sr
 import os.path
+from os import system
 import time
 
 print('Loading speech recognition ...')
