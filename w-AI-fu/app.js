@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const DEBUGMODE = true;
+const DEBUGMODE = false;
 const fs = __importStar(require("fs"));
 const cproc = __importStar(require("child_process"));
 const http = __importStar(require("http"));
