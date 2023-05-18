@@ -414,7 +414,7 @@ async function main() {
         wAIfu.emitter.emit('response', {
             "text": displayed,
             "filtered": filtered_content
-        })
+        });
 
         const new_memory = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`;
 
@@ -450,11 +450,6 @@ async function init() {
     if (wAIfu.config.filter_bad_words) {
         put('Loading filter ...\n');
         wAIfu.bad_words = getBadWords();
-    }
-
-    if (!isAuthCorrect()) {
-        put('Failed auth validation, exiting.\n');
-        closeProgram(0);
     }
 
     put('Getting audio devices ...\n');
@@ -566,30 +561,34 @@ async function getInput(mode: InputMode) {
             result = await voiceGet();
             break;
     }
+
+    if (wAIfu.started === false) {
+        if (!isAuthCorrect()) {
+            put('Failed auth validation, exiting.\n');
+            closeProgram(0);
+        }
+    }
+
     wAIfu.started = true; // Prevents input timeout on first input
 
     // Needed for some obscure reason
     // Because I can't seem to figure out how to initialize the damn
     //   thing from the pyhton script.
     // Initializes the Twitch Chat API script
-    chat_run: while (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
+    if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
         if (wAIfu.config.twitch_channel_name === '') {
             put('Critical Error: Could not initialize the Twitch Chat Reader as the provided twitch channel name is empty.\n');
             closeProgram(1);
         }
-        let resp = await fetch(CHAT.api_url + '/run', {
+        debug('initializing Twitch Chat Reader.\n');
+        fetch(CHAT.api_url + '/run', {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
         });
-        if (resp.status === 200) {
-            wAIfu.chat_reader_initialized = true;
-            break chat_run;
-        }
-        debug('could not directly contact twitchchat.py, trying again in .5s\n');
-        await delay(.5);
+        wAIfu.chat_reader_initialized = true;
     }
 
     // If is timeout, read twitch chat
@@ -743,8 +742,12 @@ async function sendToLLM(prompt: string) {
 
 async function handleCommand(command: string): Promise<string | null> {
     if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
+        if (wAIfu.input_mode === InputMode.Voice) put(command + '\n');
+        wAIfu.emitter.emit('response', {
+            "text": command,
+            "filtered": null
+        });
         command = '!say ' + command;
-        if (wAIfu.input_mode === InputMode.Voice) put('\n');
     }
 
     if (command.length > 0 && command[0] !== '!')
@@ -862,7 +865,7 @@ async function handleCommand(command: string): Promise<string | null> {
 }
 
 function sanitizeText(text: string) {
-    return text.replaceAll(/[^a-zA-Z .,?!]/g, '');
+    return text.replaceAll(/[^a-zA-Z .,?!1-9]/g, '');
 }
 
 function verifyText(text: string) {
@@ -898,6 +901,9 @@ async function sendToTTS(say: string) {
     });
     const data = await post_query.json();
     debug('received: ' + JSON.stringify(data) + '\n');
+    if (data["message"] === 'AUDIO_ERROR') {
+        put('Error: Could not play TTS because of invalid output audio device.\n');
+    }
 }
 
 async function getLastTwitchChat() {
@@ -1017,7 +1023,7 @@ function put(text: string) {
 }
 
 function debug(text: string) {
-    if (wAIfu.is_debug)
+    if (wAIfu.is_debug || DEBUGMODE)
         process.stdout.write('\x1B[1;30m' + text + '\x1B[0m');
 }
 

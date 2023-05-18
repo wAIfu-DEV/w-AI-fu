@@ -23,7 +23,7 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const DEBUGMODE = false;
+const DEBUGMODE = true;
 const fs = __importStar(require("fs"));
 const cproc = __importStar(require("child_process"));
 const http = __importStar(require("http"));
@@ -267,7 +267,9 @@ function handleRequestInterrupt(req, res) {
     switch (req.method) {
         case 'GET': {
             debug('received GET request\n');
-            fetch(TTS.api_url + '/interrupt').then(() => {
+            fetch(TTS.api_url + '/interrupt')
+                .then(() => {
+                fs.writeFileSync('./captions/transcript.txt', '');
                 res.statusCode = 200;
                 res.setHeader("Access-Control-Allow-Origin", "*");
                 res.end();
@@ -414,10 +416,6 @@ async function init() {
         put('Loading filter ...\n');
         wAIfu.bad_words = getBadWords();
     }
-    if (!isAuthCorrect()) {
-        put('Failed auth validation, exiting.\n');
-        closeProgram(0);
-    }
     put('Getting audio devices ...\n');
     cproc.spawn('python', ['audio_devices.py'], { cwd: './devices' });
     await awaitDevicesResponse();
@@ -505,25 +503,27 @@ async function getInput(mode) {
             result = await voiceGet();
             break;
     }
+    if (wAIfu.started === false) {
+        if (!isAuthCorrect()) {
+            put('Failed auth validation, exiting.\n');
+            closeProgram(0);
+        }
+    }
     wAIfu.started = true;
-    chat_run: while (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
+    if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
         if (wAIfu.config.twitch_channel_name === '') {
             put('Critical Error: Could not initialize the Twitch Chat Reader as the provided twitch channel name is empty.\n');
             closeProgram(1);
         }
-        let resp = await fetch(CHAT.api_url + '/run', {
+        debug('initializing Twitch Chat Reader.\n');
+        fetch(CHAT.api_url + '/run', {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
         });
-        if (resp.status === 200) {
-            wAIfu.chat_reader_initialized = true;
-            break chat_run;
-        }
-        debug('could not directly contact twitchchat.py, trying again in .5s\n');
-        await delay(.5);
+        wAIfu.chat_reader_initialized = true;
     }
     if (result === null && wAIfu.live_chat) {
         const { message, name } = await getChatOrNothing();
@@ -647,9 +647,13 @@ async function sendToLLM(prompt) {
 }
 async function handleCommand(command) {
     if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
-        command = '!say ' + command;
         if (wAIfu.input_mode === InputMode.Voice)
-            put('\n');
+            put(command + '\n');
+        wAIfu.emitter.emit('response', {
+            "text": command,
+            "filtered": null
+        });
+        command = '!say ' + command;
     }
     if (command.length > 0 && command[0] !== '!')
         return command;
@@ -757,7 +761,7 @@ async function handleCommand(command) {
     }
 }
 function sanitizeText(text) {
-    return text.replaceAll(/[^a-zA-Z .,?!]/g, '');
+    return text.replaceAll(/[^a-zA-Z .,?!1-9]/g, '');
 }
 function verifyText(text) {
     const low_text = text.toLowerCase();
@@ -787,6 +791,9 @@ async function sendToTTS(say) {
     });
     const data = await post_query.json();
     debug('received: ' + JSON.stringify(data) + '\n');
+    if (data["message"] === 'AUDIO_ERROR') {
+        put('Error: Could not play TTS because of invalid output audio device.\n');
+    }
 }
 async function getLastTwitchChat() {
     const get_query = await fetch(CHAT.api_url + '/api');
@@ -891,7 +898,7 @@ function put(text) {
     process.stdout.write(text);
 }
 function debug(text) {
-    if (wAIfu.is_debug)
+    if (wAIfu.is_debug || DEBUGMODE)
         process.stdout.write('\x1B[1;30m' + text + '\x1B[0m');
 }
 function exposeCaptions(text) {

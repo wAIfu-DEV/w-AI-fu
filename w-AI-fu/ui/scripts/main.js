@@ -84,7 +84,10 @@ const stillAlive = async() => {
         let resp = await fetch('http://127.0.0.1:7860/alive');
         await resp.text();
     } catch(e) {
-        window.close();
+        //window.close();
+        document.title = "Error";
+        alert('Could not reach the w-AI-fu application, it may have been closed.');
+        throw new Error('Unable to contact core NodeJS application server.');
     }
     setTimeout(stillAlive, 5 * 1000);
 }
@@ -254,6 +257,7 @@ function clearConsole() {
 }
 
 async function sendInput() {
+    if (verifyAuth() === false) return;
     if (prevent_send === true) return;
     const inputbox = document.querySelector('ConsoleInputField');
     const input_data = inputbox.textContent;
@@ -313,13 +317,27 @@ function addConsoleBubble(input, text) {
 function addFilteredBubble(filtered) {
     const view = document.querySelector('ConsoleView');
     view.innerHTML +=
-        `<ConsoleBubbleFiltered>
-            [ FILTERED ]
-            <p>${filtered.trim()}</p>
-            <FilteredOptionsButton onclick="sendCommand(\'!say ${filtered.trim().replaceAll(/[^a-zA-Z,.!? 0-9]/g, '')}\');">
-                Unfilter
-            </FilteredOptionsButton>
-        </ConsoleBubbleFiltered>`;
+        `<ConsoleViewSection>
+            <ConsoleBubbleFiltered>
+                [ FILTERED ]
+                <p>${filtered.trim()}</p>
+                <FilteredOptionsButton onclick="sendCommand(\'!say ${filtered.trim().replaceAll(/[^a-zA-Z,.!? 0-9]/g, '')}\');">
+                    Unfilter
+                </FilteredOptionsButton>
+            </ConsoleBubbleFiltered>
+        </ConsoleViewSection>`;
+    view.scrollTo(0, view.scrollHeight);
+}
+
+function addErrorBubble(error) {
+    const view = document.querySelector('ConsoleView');
+    view.innerHTML +=
+        `<ConsoleViewSection>
+            <ConsoleBubbleFiltered>
+                [ ERROR ]
+                <p>${error.trim()}</p>
+            </ConsoleBubbleFiltered>
+        </ConsoleViewSection>`;
     view.scrollTo(0, view.scrollHeight);
 }
 
@@ -331,6 +349,9 @@ async function setConfig(name, value) {
         },
         body: JSON.stringify({"name": name, "value": value})
     });
+    if (value === "on") value = true;
+    if (value === "off") value = false;
+    config[name] = value;
 }
 
 function setLatestData() {
@@ -339,6 +360,7 @@ function setLatestData() {
     a.textContent = config.user_name;*/
     last_username = config.user_name;
     const b = document.getElementById('loaded-char');
+    document.title = `Control Panel ▸ ${chara.char_name}`
     b.innerHTML = `<option>${chara.char_name}</option>`;
     for(let s of chars_list) {
         let n = s.replace('.json','');
@@ -483,4 +505,34 @@ function getTextByQuery(query) {
 
 function interrupt() {
     fetch('http://127.0.0.1:7860/interrupt');
+}
+
+function verifyAuth() {
+    if (DOM.getId('novel-mail').get('value') === '') {
+        addErrorBubble('Missing NovelAI mail from Authentification');
+        return false;
+    }
+    if (DOM.getId('novel-pass').get('value') === '') {
+        addErrorBubble('Missing NovelAI password from Authentification');
+        return false;
+    }
+
+    if (config.read_live_chat === true) {
+        if (DOM.getId('twitch-oauth').get('value') === '') {
+            addErrorBubble('Missing Twitch oauth token from Authentification');
+            return false;
+        }
+    }
+
+    if (config.tts_use_playht === true) {
+        if (DOM.getId('playht-auth').get('value') === '') {
+            addErrorBubble('Missing Play.ht auth token from Authentification');
+            return false;
+        }
+        if (DOM.getId('playht-user').get('value') === '') {
+            addErrorBubble('Missing Play.ht user token from Authentification');
+            return false;
+        }
+    }
+    return true;
 }

@@ -32,10 +32,14 @@ async def api():
 
     data = request.get_json()
     await generate_tts(speak=data['data'][0], voice_seed=data['data'][1])
-    play_tts()
-    response = jsonify({'message': 'OK'})
-    response.headers.add("Access-Control-Allow-Origin", "*")
-    return response, 200
+    if play_tts() == True:
+        response = jsonify({'message': 'OK'})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 200
+    else:
+        response = jsonify({'message': 'AUDIO_ERROR'})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500
 
 def _build_cors_preflight_response():
     response = make_response()
@@ -72,11 +76,15 @@ def play_tts():
     # Open the wave file
     wave_file = wave.open('tts.wav', 'rb')
     # Open a stream for capturing audio from the virtual audio cable
-    virtual_cable_stream = audio.open(format=audio.get_format_from_width(wave_file.getsampwidth()),
-                                      channels=1, #wave_file.getnchannels(),
-                                      rate=wave_file.getframerate(),
-                                      output=True,
-                                      output_device_index=device_index) # Set the input device index to the virtual audio cable
+    virtual_cable_stream = None
+    try:
+        virtual_cable_stream = audio.open(format=audio.get_format_from_width(wave_file.getsampwidth()),
+                                        channels=wave_file.getnchannels(),
+                                        rate=wave_file.getframerate(),
+                                        output=True,
+                                        output_device_index=device_index) # Set the input device index to the virtual audio cable
+    except:
+        return False
     # Read data from the wave file and capture it from the virtual audio cable
     data = wave_file.readframes(8192) #1024
     while data:
@@ -89,6 +97,7 @@ def play_tts():
     virtual_cable_stream.stop_stream()
     virtual_cable_stream.close()
     wave_file.close()
+    return True
 
 if __name__ == '__main__':
     f = open('../../config.json', 'r')

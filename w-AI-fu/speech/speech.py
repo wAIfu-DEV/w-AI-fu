@@ -14,8 +14,8 @@ while True:
 
     with sr.Microphone() as source:
         recognizer = sr.Recognizer()
-        recognizer.energy_threshold = 500
-        source.pause_threshold = 0.5
+        recognizer.energy_threshold = 1500
+        source.pause_threshold = 0.25
         print('Awaiting audio input ...')
         audio = recognizer.listen(source, phrase_time_limit=None, timeout=None)
         try:
