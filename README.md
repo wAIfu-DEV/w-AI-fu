@@ -27,3 +27,15 @@ You are now set to use w-AI-fu ! 🔥
 2. Prompt box, type here and hit ENTER to send
 3. Send the prompt
 5. Interrupt the AI while it is talking, important for moderation
+
+## 🔧 CONFIGURE
+
+![Configuration](https://github.com/wAIfu-DEV/w-AI-fu/blob/main/w-AI-fu/images/readme/03.webp)
+
+1. Activate/Deactivate voice input through default mic
+2. Switch between NovelAI and Play.ht for the TTS provider
+3. Activate/Deactivate Twitch chat message reading
+4. How many seconds to wait before reading Twitch chat messages
+5. Activate/Deactivate repeating of user input
+6. Activate/Deactivate filtering of bad words (Required if you want to stream)
+7. Change audio output device
