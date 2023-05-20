@@ -29,9 +29,9 @@ const cproc = __importStar(require("child_process"));
 const http = __importStar(require("http"));
 const events_1 = require("events");
 const fetch = require('node-fetch');
-const readline = require('readline/promises');
 const { resolve } = require('path');
-const rl = readline.createInterface(process.stdin, process.stdout);
+const readline = require('readline/promises');
+const readline_interface = readline.createInterface(process.stdin, process.stdout);
 const hostname = '127.0.0.1';
 const port = 7860;
 const server = http.createServer((req, res) => {
@@ -296,7 +296,7 @@ class Config {
     twitch_channel_name = '';
     chat_read_timeout_sec = 2;
     filter_bad_words = true;
-    audio_device = 0;
+    audio_device = -1;
 }
 class Character {
     char_name = '';
@@ -333,27 +333,14 @@ class SubProc {
     process = null;
     api_url = '';
     running = false;
+    constructor(port) {
+        this.api_url = port;
+    }
 }
-const LLM = {
-    process: null,
-    api_url: 'http://127.0.0.1:7840',
-    running: false
-};
-const TTS = {
-    process: null,
-    api_url: 'http://127.0.0.1:7850',
-    running: false
-};
-const CHAT = {
-    process: null,
-    api_url: 'http://127.0.0.1:7830',
-    running: false
-};
-const STT = {
-    process: null,
-    api_url: '',
-    running: false
-};
+const LLM = new SubProc('http://127.0.0.1:7840');
+const TTS = new SubProc('http://127.0.0.1:7850');
+const CHAT = new SubProc('http://127.0.0.1:7830');
+const STT = new SubProc('');
 main();
 async function main() {
     await init();
@@ -370,9 +357,9 @@ async function main() {
         const identifier = (is_chat)
             ? `[CHAT] ${pseudo}`
             : sender;
-        let additional_memories = '';
-        if (is_chat)
-            additional_memories += getChatMemories(pseudo);
+        let additional_memories = (is_chat)
+            ? ''
+            : getChatMemories(pseudo);
         let prompt = `${identifier}: ${handled}\n${wAIfu.character.char_name}:`;
         let response = await sendToLLM(flattenMemory(additional_memories) + prompt);
         let displayed = (is_chat)
@@ -397,6 +384,7 @@ async function main() {
             addChatMemory(pseudo, new_memory);
         await sendToTTS(displayed);
         exposeCaptions('');
+        continue;
     }
 }
 async function init() {
@@ -440,24 +428,18 @@ async function reinit() {
     if (wAIfu.config.filter_bad_words) {
         wAIfu.bad_words = getBadWords();
     }
-    if (!isAuthCorrect()) {
-        put('\nFailed auth validation, exiting.\n');
-        closeProgram(0);
-    }
     put('Getting audio devices ...\n');
     cproc.spawn('python', ['audio_devices.py'], { cwd: './devices' });
     await awaitDevicesResponse();
     await summonProcesses(wAIfu.input_mode);
 }
 function flattenMemory(additional) {
-    let result = wAIfu.memory.long_term + additional;
-    while (wAIfu.memory.short_term.length > 4) {
+    while (wAIfu.memory.short_term.length > 6) {
         wAIfu.memory.short_term.shift();
     }
-    for (let m of wAIfu.memory.short_term) {
-        result += m;
-    }
-    return result;
+    return wAIfu.memory.long_term
+        + additional
+        + wAIfu.memory.short_term.join('');
 }
 function isAuthCorrect() {
     const USR = fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim();
@@ -492,7 +474,7 @@ async function getInput(mode) {
         put('> ');
     }
     wAIfu.input_skipped = false;
-    let result = undefined;
+    let result = null;
     let sender = wAIfu.config.user_name;
     let pseudo = '';
     switch (mode) {
@@ -503,11 +485,9 @@ async function getInput(mode) {
             result = await voiceGet();
             break;
     }
-    if (wAIfu.started === false) {
-        if (!isAuthCorrect()) {
-            put('Failed auth validation, exiting.\n');
-            closeProgram(0);
-        }
+    if (!isAuthCorrect()) {
+        put('Failed auth validation, exiting.\n');
+        closeProgram(0);
     }
     wAIfu.started = true;
     if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
@@ -531,7 +511,7 @@ async function getInput(mode) {
         pseudo = name;
         sender = 'CHAT';
     }
-    if (result === undefined || result === null) {
+    if (result === null) {
         put('Critical error: input is invalid.');
         closeProgram(1);
         process.exit(1);
@@ -629,8 +609,7 @@ async function startSTT() {
     STT.running = true;
 }
 async function sendToLLM(prompt) {
-    const input = prompt;
-    const payload = JSON.stringify({ data: [input, wAIfu.character.craziness, wAIfu.character.creativity] });
+    const payload = JSON.stringify({ data: [prompt, wAIfu.character.craziness, wAIfu.character.creativity] });
     debug('sending: ' + payload + '\n');
     const post_query = await fetch(LLM.api_url + '/api', {
         method: "POST",
@@ -700,7 +679,7 @@ async function handleCommand(command) {
             const fpath = command.substring('!script '.length, undefined).trim();
             const fpath_resolved = `../UserData/scripts/${fpath}`;
             if (!fs.existsSync(fpath_resolved)) {
-                put(`Cannot open file: ${fpath_resolved}\n`);
+                put(`Error: Cannot open file ${fpath_resolved}\n`);
                 return null;
             }
             let fcontent = fs.readFileSync(fpath_resolved).toString();
@@ -806,7 +785,7 @@ function init_get() {
         wAIfu.command_queue.push(input);
         debug('Added: ' + input + ' to queue.\n');
     };
-    rl.on('line', e);
+    readline_interface.on('line', e);
 }
 function textGet() {
     debug('Awaiting text input ...\n');
@@ -828,6 +807,8 @@ function textGet() {
             if (wAIfu.command_queue.length > 0) {
                 debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
                 text = wAIfu.command_queue.shift();
+                if (text === undefined)
+                    text = null;
                 resolved = true;
                 resolve(text);
             }
@@ -854,7 +835,7 @@ function voiceGet() {
             if (resolved)
                 return;
             if (fs.existsSync('./speech/input.txt')) {
-                text = fs.readFileSync('./speech/input.txt').toString();
+                text = fs.readFileSync('./speech/input.txt').toString('utf8');
                 fs.unlinkSync('./speech/input.txt');
                 resolved = true;
                 resolve(text);
@@ -862,6 +843,8 @@ function voiceGet() {
             else if (wAIfu.command_queue.length > 0) {
                 debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
                 text = wAIfu.command_queue.shift();
+                if (text === undefined)
+                    text = null;
                 resolved = true;
                 resolve(text);
             }
@@ -937,8 +920,8 @@ function updateChatDatabase(obj) {
     let s = flattenChatDatabase(obj);
     fs.writeFileSync('../UserData/data/chat_user_db.csv', s);
 }
-function parseChatDatabase(text) {
-    const lines = text.split(/\r\n|\n/);
+function parseChatDatabase(csv) {
+    const lines = csv.split(/\r\n|\n/);
     let csv_map = new Map();
     for (let i = 0; i < lines.length; ++i) {
         if (lines[i].trim() === '')
@@ -955,11 +938,10 @@ function parseChatDatabase(text) {
 function flattenChatDatabase(obj) {
     let flat = '';
     for (let [key, value] of obj) {
-        let log = Array.from(value);
-        while (log.length > 4)
-            log.shift();
+        while (value.length > 4)
+            value.shift();
         let line = key;
-        for (let s of log) {
+        for (let s of value) {
             line += ',' + s;
         }
         flat += line + '\n';
@@ -978,11 +960,6 @@ function retreiveCharacters() {
 function modifyConfig(field, value) {
     wAIfu.config[field] = value;
     fs.writeFileSync('../config.json', JSON.stringify(wAIfu.config));
-}
-function delay(n) {
-    return new Promise((resolve) => {
-        setTimeout(resolve, n * 1000);
-    });
 }
 function awaitProcessLoaded(proc) {
     return new Promise((resolve) => {
