@@ -21,3 +21,9 @@ You are now set to use w-AI-fu ! 🔥
 ## 💬 USAGE
 
 ![How to use](https://github.com/wAIfu-DEV/w-AI-fu/blob/main/w-AI-fu/images/readme/02.webp)
+
+1. Change which character you are talking to
+2. Change your user name
+2. Prompt box, type here and hit ENTER to send
+3. Send the prompt
+5. Interrupt the AI while it is talking, important for moderation
