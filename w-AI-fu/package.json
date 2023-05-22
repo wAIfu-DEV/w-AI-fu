@@ -10,9 +10,11 @@
   "author": "w-AI-fu DEV",
   "license": "GPL3",
   "devDependencies": {
+    "@types/ws": "^8.5.4",
     "typescript": "^5.0.4"
   },
   "dependencies": {
-    "node-fetch": "^2.6.9"
+    "node-fetch": "^2.6.9",
+    "ws": "^8.13.0"
   }
 }

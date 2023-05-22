@@ -111,6 +111,40 @@ ConsoleBubbleOut {
     justify-self: left;
 }
 
+ConsoleBubbleChat {
+    user-select: text;
+    background-color: rgb(105, 54, 136);
+    border-radius: 1rem;
+    display: inline-block;
+    padding: .75rem;
+    justify-self: right;
+}
+
+ConsoleBubbleChat > p {
+    padding: .75rem;
+    margin-top: .75rem;
+    background-color: rgb(10, 15, 20);
+    border-radius: .75rem;
+    color: white;
+}
+
+ConsoleBubbleError {
+    user-select: text;
+    background-color: rgb(137, 0, 0);
+    border-radius: 1rem;
+    display: inline-block;
+    padding: .75rem;
+    justify-self: left;
+}
+
+ConsoleBubbleError > p {
+    padding: .75rem;
+    margin-top: .75rem;
+    background-color: rgb(10, 15, 20);
+    border-radius: .75rem;
+    color: white;
+}
+
 ConsoleBubbleFiltered {
     user-select: text;
     border: solid 1px rgb(50, 60, 70);
@@ -123,7 +157,7 @@ ConsoleBubbleFiltered {
 
 ConsoleBubbleFiltered > p {
     padding: .75rem;
-    margin: .75rem 0px;
+    margin-top: .75rem;
     background-color: rgb(10, 15, 20);
     border: solid 1px rgb(50, 60, 70);
     border-radius: .75rem;
@@ -131,6 +165,7 @@ ConsoleBubbleFiltered > p {
 }
 
 FilteredOptionsButton {
+    margin-top: .75rem;
     cursor: pointer;
     display: inline-block;
     padding: .5rem;

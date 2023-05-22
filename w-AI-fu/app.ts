@@ -21,297 +21,145 @@ const DEBUGMODE: boolean = false;
 
 import * as fs from 'fs';
 import * as cproc from 'child_process';
-import * as http from 'http';
 import { EventEmitter } from 'events';
+import WebSocket, { WebSocketServer } from 'ws';
 
 const fetch = require('node-fetch');
 const { resolve } = require('path');
 const readline = require('readline/promises');
+
 const readline_interface = readline.createInterface(process.stdin, process.stdout);
 
-/** Host url of the NodeJS server for communication with the webui */
-const hostname: string = '127.0.0.1';
-/** Port of the NodeJS server used for communication with the webui */
-const port = 7860;
-
-/** NodeJS server responsible for the communication with the webui */
-const server: http.Server = http.createServer((req: http.IncomingMessage, res: http.ServerResponse): void => {
-    if (req.url === undefined) return;
-    if (req.url === '/') return;
-
-    /** Handles the CORS preflight requests sent by the browser */
-    if (req.method === 'OPTIONS') {
-        debug('received OPTIONS request\n');
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader('Access-Control-Allow-Headers', "*");
-        res.setHeader('Access-Control-Allow-Methods', "*");
-        res.statusCode = 200;
-        res.end();
-        return;
-    }
-
-    debug(req.url + '\n');
-    switch (req.url) {
-        case '/input': {
-            handleRequestInput(req, res);
-            return;
-        }
-        case '/command': {
-            handleRequestCommand(req, res);
-            return;
-        }
-        case '/latest': {
-            handleRequestLatest(req, res);
-            return;
-        }
-        case '/config': {
-            handleRequestConfig(req, res);
-            return;
-        }
-        case '/alive': {
-            res.statusCode = 200;
-            res.setHeader("Access-Control-Allow-Origin", "*");
-            res.end();
-            return;
-        }
-        case '/savechar': {
-            handleRequestNewChar(req, res);
-            return;
-        }
-        case '/getauth': {
-            handleRequestGetAuth(req, res);
-            return;
-        }
-        case '/setauth': {
-            handleRequestSetAuth(req, res);
-            return;
-        }
-        case '/setdevices': {
-            handleRequestSetDevices(req, res);
-            return;
-        }
-        case '/interrupt': {
-            handleRequestInterrupt(req, res);
-            return;
-        }
-    }
+const wss = new WebSocketServer({ host: '127.0.0.1', port: 7870 });
+let ws: WebSocket|null = null;
+wss.on('connection', function connection(socket: WebSocket) {
+    debug('connected ws server.\n');
+    ws = socket;
+    ws.on('error', console.error);
+    ws.on('message', (data) => handleSocketMessage(ws!, data));
 });
-server.listen(port, hostname, () => {});
 
-/** Handles reception of prompt from webui */
-function handleRequestInput(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks: any[] = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                put(data + '\n');
-                wAIfu.command_queue.push(data);
-                const sendReponse = (response: any) => {
-                    res.statusCode = 200;
-                    res.setHeader('Content-Type', 'application/json');
-                    res.setHeader("Access-Control-Allow-Origin", "*");
-                    res.end(JSON.stringify(response));
-                    wAIfu.emitter.removeListener('response', sendReponse);
-                };
-                wAIfu.emitter.on('response', sendReponse);
-            });
+async function handleSocketMessage(ws: WebSocket, data: any): Promise<void> {
+    const message: string = String(data);
+    let type: string = message.split(' ')[0];
+    if (type === undefined) type = message;
+    const payload: string = (type.length === message.length)
+                            ? ''
+                            : message.substring(type.length + 1, undefined);
+    
+    debug(`ws received: ${message}\n`);
+    switch (type) {
+        case 'MSG': {
+            wsMSG(payload);
             return;
         }
-    }
+        case 'AUTH_GET': {
+            wsAUTH_GET();
+            return;
+        }
+        case 'AUTH_SET': {
+            wsAUTH_SET(payload);
+            return;
+        }
+        case 'LATEST': {
+            wsLATEST();
+            return;
+        }
+        case 'CONFIG': {
+            wsCONFIG(payload);
+            return;
+        }
+        case 'CHARA': {
+            wsCHARA(payload);
+            return;
+        }
+        case 'DEVICE': {
+            wsDEVICE(payload);
+            return;
+        }
+        case 'INTERRUPT': {
+            wsINTERRUPT();
+            return;
+        }
+        default:
+            return;
+    };
 }
 
-/** Handles reception of non-immediate commands from webui */
-function handleRequestCommand(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks: any[] = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                put(data + '\n');
-                wAIfu.command_queue.push(data);
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+/** Handles reception of prompt or command from webui */
+function wsMSG(data: string): void {
+    put(`${data}\n`);
+    wAIfu.command_queue.push(data);
 }
 
-/** Handles config changes from the webui */
-function handleRequestConfig(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks: any[] = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                
-                const obj = JSON.parse(data);
-                const config_field = obj.name;
-                let new_value = obj.value;
-
-                if (new_value === 'on') new_value = true;
-                if (new_value === 'off') new_value = false;
-
-                put(`changed value of ${config_field} to: ${new_value}\n`);
-
-                modifyConfig(config_field, new_value);
-                handleCommand('!reload').then(() => {
-                    res.statusCode = 200;
-                    res.setHeader("Access-Control-Allow-Origin", "*");
-                    res.end();
-                });
-            });
-            return;
-        }
-    }
-}
-
-/** Handles changes to the character from the webui */
-function handleRequestNewChar(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks: any[] = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-
-                const obj = JSON.parse(data);
-                fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
-
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+/** Handles interruption of TTS from the webui */
+function wsINTERRUPT(): void {
+    fetch(TTS.api_url + '/interrupt')
+    .then(() => {
+        fs.writeFileSync('./captions/transcript.txt', '');
+    });
 }
 
 /** Sends the initial data to the webui */
-function handleRequestLatest(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'GET': {
-            debug('received GET request\n');
-            res.statusCode = 200;
-            res.setHeader("Access-Control-Allow-Origin", "*");
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(
-                {
-                    "config": wAIfu.config,
-                    "character": wAIfu.character,
-                    "chars_list": retreiveCharacters(),
-                    "version": wAIfu.package.version,
-                    "audio_devices": wAIfu.audio_devices
-                }
-            ));
-            return;
-        }
-    }
+function wsLATEST(): void {
+    ws!.send('LATEST ' + JSON.stringify({
+        "config": wAIfu.config,
+        "character": wAIfu.character,
+        "chars_list": retreiveCharacters(),
+        "version": wAIfu.package.version,
+        "audio_devices": wAIfu.audio_devices
+    }));
+}
+
+/** Handles config changes from the webui */
+function wsCONFIG(data: string): void {
+    const obj = JSON.parse(data);
+    const config_field = obj.name;
+    let new_value = obj.value;
+
+    if (new_value === 'on') new_value = true;
+    if (new_value === 'off') new_value = false;
+
+    debug(`changed value of ${config_field} to: ${new_value}\n`);
+
+    modifyConfig(config_field, new_value);
+    handleCommand('!reload');
 }
 
 /**
  * Sends the auth informations to the webui.
  * Should probably be encrypted but I have no idea how to ;3
  */
-function handleRequestGetAuth(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'GET': {
-            debug('received GET request\n');
-            res.statusCode = 200;
-            res.setHeader("Access-Control-Allow-Origin", "*");
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify(
-                {
-                    "novel-mail": fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim(),
-                    "novel-pass": fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim(),
-                    "twitch-oauth": fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim(),
-                    "playht-auth": fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim(),
-                    "playht-user": fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim()
-                }
-            ));
-            return;
-        }
-    }
+function wsAUTH_GET(): void {
+    ws!.send('AUTH ' + JSON.stringify({
+        "novel-mail": fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim(),
+        "novel-pass": fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim(),
+        "twitch-oauth": fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim(),
+        "playht-auth": fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim(),
+        "playht-user": fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim()
+    }));
 }
 
 /** Handles changes to the auth informations from webui */
-function handleRequestSetAuth(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks: any[] = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
+function wsAUTH_SET(data: string): void {
+    const obj = JSON.parse(data);
+    fs.writeFileSync('../UserData/auth/novel_user.txt', obj["novel-mail"]);
+    fs.writeFileSync('../UserData/auth/novel_pass.txt', obj["novel-pass"]);
+    fs.writeFileSync('../UserData/auth/twitch_oauth.txt', obj["twitch-oauth"]);
+    fs.writeFileSync('../UserData/auth/play-ht_auth.txt', obj["playht-auth"]);
+    fs.writeFileSync('../UserData/auth/play-ht_user.txt', obj["playht-user"]);
+}
 
-                const obj = JSON.parse(data);
-                fs.writeFileSync('../UserData/auth/novel_user.txt', obj["novel-mail"]);
-                fs.writeFileSync('../UserData/auth/novel_pass.txt', obj["novel-pass"]);
-                fs.writeFileSync('../UserData/auth/twitch_oauth.txt', obj["twitch-oauth"]);
-                fs.writeFileSync('../UserData/auth/play-ht_auth.txt', obj["playht-auth"]);
-                fs.writeFileSync('../UserData/auth/play-ht_user.txt', obj["playht-user"]);
-
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+/** Handles changes to the character from the webui */
+function wsCHARA(data: string): void {
+    const obj = JSON.parse(data);
+    fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
 }
 
 /** Handles change of audio device from webui */
-function handleRequestSetDevices(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks: any[] = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-
-                const obj = JSON.parse(data);
-                wAIfu.audio_devices = obj;
-
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
-}
-
-/** Handles interruption of TTS from the webui */
-function handleRequestInterrupt(req: http.IncomingMessage, res: http.ServerResponse): void {
-    switch (req.method) {
-        case 'GET': {
-            debug('received GET request\n');
-            fetch(TTS.api_url + '/interrupt')
-            .then(() => {
-                fs.writeFileSync('./captions/transcript.txt', '');
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+function wsDEVICE(data: string): void {
+    const obj = JSON.parse(data);
+    wAIfu.audio_devices = obj;
 }
 
 /** Available Input modes, might be expanded later. */
@@ -403,6 +251,8 @@ class wAIfuApp {
     emitter: EventEmitter = new EventEmitter();
     /** Dictionnary of available audio devices */
     audio_devices: any = {};
+    /** */
+    init_cycle: number = 0;
 }
 /** Singleton of the application's state */
 const wAIfu: wAIfuApp = new wAIfuApp();
@@ -435,7 +285,10 @@ async function main(): Promise<void> {
 
     main_loop: while (true) {
         /** Input from the user (or twitch chat) */
-        const { input, sender, pseudo } = await getInput(wAIfu.input_mode);
+        const inputObj = await getInput(wAIfu.input_mode);
+        if (inputObj === null) continue main_loop;
+
+        const { input, sender, pseudo } = inputObj;
         const is_chat: boolean = sender === 'CHAT';
         const handled: string|null = (is_chat)
                                      ? input
@@ -445,6 +298,15 @@ async function main(): Promise<void> {
             wAIfu.input_skipped = true;
             continue main_loop;
         }
+
+        /** Send input via websocket */
+        if (ws !== null && ws.readyState === ws.OPEN) {
+            if (is_chat)
+                ws.send('MSG_CHAT ' + JSON.stringify({ "user": pseudo, "text": handled }));
+            else
+                ws.send('MSG_IN ' + handled);
+        }
+
         /** Name of the sender */
         const identifier: string = (is_chat)
                                    ? `[CHAT] ${pseudo}`
@@ -474,10 +336,17 @@ async function main(): Promise<void> {
         put(`${wAIfu.character.char_name}:${displayed}`);
         exposeCaptions(displayed);
 
-        wAIfu.emitter.emit('response', {
+        /** Send output via websocket */
+        if (ws !== null && ws.readyState === ws.OPEN) {
+            ws.send('MSG_OUT ' + JSON.stringify({
+                "text": displayed,
+                "filtered": filtered_content
+            }));
+        }
+        /*wAIfu.emitter.emit('response', {
             "text": displayed,
             "filtered": filtered_content
-        });
+        });*/
 
         /** new string to add to short-term memory */
         const new_memory: string = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`;
@@ -519,8 +388,7 @@ async function init(): Promise<void> {
     }
 
     put('Getting audio devices ...\n');
-    cproc.spawn('python', ['audio_devices.py'], { cwd: './devices' });
-    await awaitDevicesResponse()
+    getDevices();
 
     put('Spawning subprocesses ...\n');
     await summonProcesses(wAIfu.input_mode);
@@ -536,6 +404,7 @@ async function init(): Promise<void> {
 
 /** Reloads the application after config changes, might not be the optimal way of doing it but it works :3 */
 async function reinit() {
+    wAIfu.init_cycle++;
     put('Reinitializing ...\n');
     wAIfu.package = getPackage();
     wAIfu.config = getConfig();
@@ -549,8 +418,7 @@ async function reinit() {
         wAIfu.bad_words = getBadWords();
     }
     put('Getting audio devices ...\n');
-    cproc.spawn('python', ['audio_devices.py'], { cwd: './devices' });
-    await awaitDevicesResponse()
+    getDevices();
     await summonProcesses(wAIfu.input_mode);
 }
 
@@ -560,7 +428,7 @@ function flattenMemory(additional: string): string {
     // Prevents character dillution
     // Increase the right-hand number to allow for greater memory capacity
     // at the cost of answers less faithul to the character.
-    while (wAIfu.memory.short_term.length > 6) {
+    while (wAIfu.memory.short_term.length > 5) {
         wAIfu.memory.short_term.shift();
     }
     return wAIfu.memory.long_term
@@ -599,7 +467,12 @@ function isAuthCorrect(): boolean {
     return true;
 }
 
-async function getInput(mode: InputMode) {
+async function getInput(mode: InputMode): Promise<{input: string, sender: string, pseudo: string}|null> {
+    /** Keeps track of init_cycle at start of getInput() call,
+     * we want to make sure that if the application restarts, the getInput()
+     * function returns and does not continue.*/
+    const old_init_cycle: number = wAIfu.init_cycle;
+
     if(wAIfu.input_skipped === false) {
         put('> ');
     }
@@ -618,9 +491,15 @@ async function getInput(mode: InputMode) {
             break;
     }
 
+    /** If application has been restarted between start and now, dip */
+    if (old_init_cycle !== wAIfu.init_cycle) {
+        debug('discarded input because of init cycle change.\n');
+        return null;
+    }
+
     if (!isAuthCorrect()) {
-        put('Failed auth validation, exiting.\n');
-        closeProgram(0);
+        put('Failed auth validation, could not continue.\n');
+        return null;
     }
 
     wAIfu.started = true; // Prevents input timeout on first input
@@ -640,6 +519,12 @@ async function getInput(mode: InputMode) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
+        }).catch((e: any) => {
+            if (e.errno !== undefined && e.errno === 'ECONNRESET') {
+                /** I know this is basically a war crime but the error is going
+                 * to happen either way weither I want it or not :3 */
+                debug('Error: There was an error with the fetch request to /run\n');
+            }
         });
         wAIfu.chat_reader_initialized = true;
     }
@@ -653,7 +538,7 @@ async function getInput(mode: InputMode) {
     }
     /** User input is still null, not supposed to happen */
     if (result === null) {
-        put('Critical error: input is invalid.');
+        put('Critical error: input is invalid.\n');
         closeProgram(1); process.exit(1);
     }
     return { input: result, sender, pseudo };
@@ -998,6 +883,7 @@ function textGet(): Promise<string|null> {
     debug('Awaiting text input ...\n');
     return new Promise<string|null>(
         (resolve) => {
+            const old_init_cycle: number = wAIfu.init_cycle;
             let text: string|null = null;
             let resolved: boolean = false;
 
@@ -1021,6 +907,9 @@ function textGet(): Promise<string|null> {
                     if (text === undefined) text = null;
                     resolved = true;
                     resolve(text);
+                } else if (wAIfu.init_cycle !== old_init_cycle) {
+                    resolved = true;
+                    resolve(null);
                 } else {
                     setTimeout(checkQueue, 250);
                 }
@@ -1033,6 +922,7 @@ function textGet(): Promise<string|null> {
 function voiceGet(): Promise<string|null> {
     return new Promise<string|null>(
         (resolve) => {
+            const old_init_cycle: number = wAIfu.init_cycle;
             let text: string|null = null;
             let resolved: boolean = false;
 
@@ -1059,6 +949,9 @@ function voiceGet(): Promise<string|null> {
                     if (text === undefined) text = null;
                     resolved = true;
                     resolve(text);
+                } else if (wAIfu.init_cycle !== old_init_cycle) {
+                    resolved = true;
+                    resolve(null);
                 } else {
                     setTimeout(checkFile, 250);
                 }
@@ -1228,9 +1121,19 @@ function awaitProcessLoaded(proc: SubProc): Promise<void> {
     )
 }
 
-function awaitDevicesResponse(): Promise<void> {
+function getDevices(): void {
+    if (fs.existsSync('./devices/devices.json')) {
+        fs.unlinkSync('./devices/devices.json');
+    }
+    cproc.spawnSync('python', ['audio_devices.py'], { cwd: './devices' });
+    const data = fs.readFileSync('./devices/devices.json');
+    wAIfu.audio_devices = JSON.parse(data.toString('utf8'));
+}
+
+/*function awaitDevicesResponse(): Promise<void> {
     return new Promise<void>(
         (resolve) => {
+            cproc.spawnSync('python', ['audio_devices.py'], { cwd: './devices' });
             let received = false;
             const checkreceived = () => {
                 if (received) return;
@@ -1245,7 +1148,7 @@ function awaitDevicesResponse(): Promise<void> {
             setTimeout(checkreceived, 500);
         }
     )
-}
+}*/
 
 //#region LICENSE
 /** This work is under the GPLv3 License.

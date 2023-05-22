@@ -26,257 +26,122 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const DEBUGMODE = false;
 const fs = __importStar(require("fs"));
 const cproc = __importStar(require("child_process"));
-const http = __importStar(require("http"));
 const events_1 = require("events");
+const ws_1 = require("ws");
 const fetch = require('node-fetch');
 const { resolve } = require('path');
 const readline = require('readline/promises');
 const readline_interface = readline.createInterface(process.stdin, process.stdout);
-const hostname = '127.0.0.1';
-const port = 7860;
-const server = http.createServer((req, res) => {
-    if (req.url === undefined)
-        return;
-    if (req.url === '/')
-        return;
-    if (req.method === 'OPTIONS') {
-        debug('received OPTIONS request\n');
-        res.setHeader("Access-Control-Allow-Origin", "*");
-        res.setHeader('Access-Control-Allow-Headers', "*");
-        res.setHeader('Access-Control-Allow-Methods', "*");
-        res.statusCode = 200;
-        res.end();
-        return;
-    }
-    debug(req.url + '\n');
-    switch (req.url) {
-        case '/input': {
-            handleRequestInput(req, res);
-            return;
-        }
-        case '/command': {
-            handleRequestCommand(req, res);
-            return;
-        }
-        case '/latest': {
-            handleRequestLatest(req, res);
-            return;
-        }
-        case '/config': {
-            handleRequestConfig(req, res);
-            return;
-        }
-        case '/alive': {
-            res.statusCode = 200;
-            res.setHeader("Access-Control-Allow-Origin", "*");
-            res.end();
-            return;
-        }
-        case '/savechar': {
-            handleRequestNewChar(req, res);
-            return;
-        }
-        case '/getauth': {
-            handleRequestGetAuth(req, res);
-            return;
-        }
-        case '/setauth': {
-            handleRequestSetAuth(req, res);
-            return;
-        }
-        case '/setdevices': {
-            handleRequestSetDevices(req, res);
-            return;
-        }
-        case '/interrupt': {
-            handleRequestInterrupt(req, res);
-            return;
-        }
-    }
+const wss = new ws_1.WebSocketServer({ host: '127.0.0.1', port: 7870 });
+let ws = null;
+wss.on('connection', function connection(socket) {
+    debug('connected ws server.\n');
+    ws = socket;
+    ws.on('error', console.error);
+    ws.on('message', (data) => handleSocketMessage(ws, data));
 });
-server.listen(port, hostname, () => { });
-function handleRequestInput(req, res) {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                put(data + '\n');
-                wAIfu.command_queue.push(data);
-                const sendReponse = (response) => {
-                    res.statusCode = 200;
-                    res.setHeader('Content-Type', 'application/json');
-                    res.setHeader("Access-Control-Allow-Origin", "*");
-                    res.end(JSON.stringify(response));
-                    wAIfu.emitter.removeListener('response', sendReponse);
-                };
-                wAIfu.emitter.on('response', sendReponse);
-            });
+async function handleSocketMessage(ws, data) {
+    const message = String(data);
+    let type = message.split(' ')[0];
+    if (type === undefined)
+        type = message;
+    const payload = (type.length === message.length)
+        ? ''
+        : message.substring(type.length + 1, undefined);
+    debug(`ws received: ${message}\n`);
+    switch (type) {
+        case 'MSG': {
+            wsMSG(payload);
             return;
         }
+        case 'AUTH_GET': {
+            wsAUTH_GET();
+            return;
+        }
+        case 'AUTH_SET': {
+            wsAUTH_SET(payload);
+            return;
+        }
+        case 'LATEST': {
+            wsLATEST();
+            return;
+        }
+        case 'CONFIG': {
+            wsCONFIG(payload);
+            return;
+        }
+        case 'CHARA': {
+            wsCHARA(payload);
+            return;
+        }
+        case 'DEVICE': {
+            wsDEVICE(payload);
+            return;
+        }
+        case 'INTERRUPT': {
+            wsINTERRUPT();
+            return;
+        }
+        default:
+            return;
     }
+    ;
 }
-function handleRequestCommand(req, res) {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                put(data + '\n');
-                wAIfu.command_queue.push(data);
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+function wsMSG(data) {
+    put(`${data}\n`);
+    wAIfu.command_queue.push(data);
 }
-function handleRequestConfig(req, res) {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                const obj = JSON.parse(data);
-                const config_field = obj.name;
-                let new_value = obj.value;
-                if (new_value === 'on')
-                    new_value = true;
-                if (new_value === 'off')
-                    new_value = false;
-                put(`changed value of ${config_field} to: ${new_value}\n`);
-                modifyConfig(config_field, new_value);
-                handleCommand('!reload').then(() => {
-                    res.statusCode = 200;
-                    res.setHeader("Access-Control-Allow-Origin", "*");
-                    res.end();
-                });
-            });
-            return;
-        }
-    }
+function wsINTERRUPT() {
+    fetch(TTS.api_url + '/interrupt')
+        .then(() => {
+        fs.writeFileSync('./captions/transcript.txt', '');
+    });
 }
-function handleRequestNewChar(req, res) {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                const obj = JSON.parse(data);
-                fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+function wsLATEST() {
+    ws.send('LATEST ' + JSON.stringify({
+        "config": wAIfu.config,
+        "character": wAIfu.character,
+        "chars_list": retreiveCharacters(),
+        "version": wAIfu.package.version,
+        "audio_devices": wAIfu.audio_devices
+    }));
 }
-function handleRequestLatest(req, res) {
-    switch (req.method) {
-        case 'GET': {
-            debug('received GET request\n');
-            res.statusCode = 200;
-            res.setHeader("Access-Control-Allow-Origin", "*");
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({
-                "config": wAIfu.config,
-                "character": wAIfu.character,
-                "chars_list": retreiveCharacters(),
-                "version": wAIfu.package.version,
-                "audio_devices": wAIfu.audio_devices
-            }));
-            return;
-        }
-    }
+function wsCONFIG(data) {
+    const obj = JSON.parse(data);
+    const config_field = obj.name;
+    let new_value = obj.value;
+    if (new_value === 'on')
+        new_value = true;
+    if (new_value === 'off')
+        new_value = false;
+    debug(`changed value of ${config_field} to: ${new_value}\n`);
+    modifyConfig(config_field, new_value);
+    handleCommand('!reload');
 }
-function handleRequestGetAuth(req, res) {
-    switch (req.method) {
-        case 'GET': {
-            debug('received GET request\n');
-            res.statusCode = 200;
-            res.setHeader("Access-Control-Allow-Origin", "*");
-            res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({
-                "novel-mail": fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim(),
-                "novel-pass": fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim(),
-                "twitch-oauth": fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim(),
-                "playht-auth": fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim(),
-                "playht-user": fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim()
-            }));
-            return;
-        }
-    }
+function wsAUTH_GET() {
+    ws.send('AUTH ' + JSON.stringify({
+        "novel-mail": fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim(),
+        "novel-pass": fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim(),
+        "twitch-oauth": fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim(),
+        "playht-auth": fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim(),
+        "playht-user": fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim()
+    }));
 }
-function handleRequestSetAuth(req, res) {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                const obj = JSON.parse(data);
-                fs.writeFileSync('../UserData/auth/novel_user.txt', obj["novel-mail"]);
-                fs.writeFileSync('../UserData/auth/novel_pass.txt', obj["novel-pass"]);
-                fs.writeFileSync('../UserData/auth/twitch_oauth.txt', obj["twitch-oauth"]);
-                fs.writeFileSync('../UserData/auth/play-ht_auth.txt', obj["playht-auth"]);
-                fs.writeFileSync('../UserData/auth/play-ht_user.txt', obj["playht-user"]);
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+function wsAUTH_SET(data) {
+    const obj = JSON.parse(data);
+    fs.writeFileSync('../UserData/auth/novel_user.txt', obj["novel-mail"]);
+    fs.writeFileSync('../UserData/auth/novel_pass.txt', obj["novel-pass"]);
+    fs.writeFileSync('../UserData/auth/twitch_oauth.txt', obj["twitch-oauth"]);
+    fs.writeFileSync('../UserData/auth/play-ht_auth.txt', obj["playht-auth"]);
+    fs.writeFileSync('../UserData/auth/play-ht_user.txt', obj["playht-user"]);
 }
-function handleRequestSetDevices(req, res) {
-    switch (req.method) {
-        case 'POST': {
-            debug('received POST request\n');
-            const chunks = [];
-            req.on('data', chunk => chunks.push(chunk));
-            req.on('end', () => {
-                const data = Buffer.concat(chunks).toString('utf8');
-                debug('request data: ' + data + '\n');
-                const obj = JSON.parse(data);
-                wAIfu.audio_devices = obj;
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+function wsCHARA(data) {
+    const obj = JSON.parse(data);
+    fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
 }
-function handleRequestInterrupt(req, res) {
-    switch (req.method) {
-        case 'GET': {
-            debug('received GET request\n');
-            fetch(TTS.api_url + '/interrupt')
-                .then(() => {
-                fs.writeFileSync('./captions/transcript.txt', '');
-                res.statusCode = 200;
-                res.setHeader("Access-Control-Allow-Origin", "*");
-                res.end();
-            });
-            return;
-        }
-    }
+function wsDEVICE(data) {
+    const obj = JSON.parse(data);
+    wAIfu.audio_devices = obj;
 }
 var InputMode;
 (function (InputMode) {
@@ -327,6 +192,7 @@ class wAIfuApp {
     memory = new Memory();
     emitter = new events_1.EventEmitter();
     audio_devices = {};
+    init_cycle = 0;
 }
 const wAIfu = new wAIfuApp();
 class SubProc {
@@ -345,7 +211,10 @@ main();
 async function main() {
     await init();
     main_loop: while (true) {
-        const { input, sender, pseudo } = await getInput(wAIfu.input_mode);
+        const inputObj = await getInput(wAIfu.input_mode);
+        if (inputObj === null)
+            continue main_loop;
+        const { input, sender, pseudo } = inputObj;
         const is_chat = sender === 'CHAT';
         const handled = (is_chat)
             ? input
@@ -353,6 +222,12 @@ async function main() {
         if (handled === null || handled === '') {
             wAIfu.input_skipped = true;
             continue main_loop;
+        }
+        if (ws !== null && ws.readyState === ws.OPEN) {
+            if (is_chat)
+                ws.send('MSG_CHAT ' + JSON.stringify({ "user": pseudo, "text": handled }));
+            else
+                ws.send('MSG_IN ' + handled);
         }
         const identifier = (is_chat)
             ? `[CHAT] ${pseudo}`
@@ -373,10 +248,12 @@ async function main() {
         }
         put(`${wAIfu.character.char_name}:${displayed}`);
         exposeCaptions(displayed);
-        wAIfu.emitter.emit('response', {
-            "text": displayed,
-            "filtered": filtered_content
-        });
+        if (ws !== null && ws.readyState === ws.OPEN) {
+            ws.send('MSG_OUT ' + JSON.stringify({
+                "text": displayed,
+                "filtered": filtered_content
+            }));
+        }
         const new_memory = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`;
         wAIfu.memory.short_term.push(new_memory);
         wAIfu.dialog_transcript += new_memory;
@@ -405,8 +282,7 @@ async function init() {
         wAIfu.bad_words = getBadWords();
     }
     put('Getting audio devices ...\n');
-    cproc.spawn('python', ['audio_devices.py'], { cwd: './devices' });
-    await awaitDevicesResponse();
+    getDevices();
     put('Spawning subprocesses ...\n');
     await summonProcesses(wAIfu.input_mode);
     put('Starting WebUI ...\n');
@@ -416,6 +292,7 @@ async function init() {
     init_get();
 }
 async function reinit() {
+    wAIfu.init_cycle++;
     put('Reinitializing ...\n');
     wAIfu.package = getPackage();
     wAIfu.config = getConfig();
@@ -429,12 +306,11 @@ async function reinit() {
         wAIfu.bad_words = getBadWords();
     }
     put('Getting audio devices ...\n');
-    cproc.spawn('python', ['audio_devices.py'], { cwd: './devices' });
-    await awaitDevicesResponse();
+    getDevices();
     await summonProcesses(wAIfu.input_mode);
 }
 function flattenMemory(additional) {
-    while (wAIfu.memory.short_term.length > 6) {
+    while (wAIfu.memory.short_term.length > 5) {
         wAIfu.memory.short_term.shift();
     }
     return wAIfu.memory.long_term
@@ -470,6 +346,7 @@ function isAuthCorrect() {
     return true;
 }
 async function getInput(mode) {
+    const old_init_cycle = wAIfu.init_cycle;
     if (wAIfu.input_skipped === false) {
         put('> ');
     }
@@ -485,9 +362,13 @@ async function getInput(mode) {
             result = await voiceGet();
             break;
     }
+    if (old_init_cycle !== wAIfu.init_cycle) {
+        debug('discarded input because of init cycle change.\n');
+        return null;
+    }
     if (!isAuthCorrect()) {
-        put('Failed auth validation, exiting.\n');
-        closeProgram(0);
+        put('Failed auth validation, could not continue.\n');
+        return null;
     }
     wAIfu.started = true;
     if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
@@ -502,6 +383,10 @@ async function getInput(mode) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
+        }).catch((e) => {
+            if (e.errno !== undefined && e.errno === 'ECONNRESET') {
+                debug('Error: There was an error with the fetch request to /run\n');
+            }
         });
         wAIfu.chat_reader_initialized = true;
     }
@@ -512,7 +397,7 @@ async function getInput(mode) {
         sender = 'CHAT';
     }
     if (result === null) {
-        put('Critical error: input is invalid.');
+        put('Critical error: input is invalid.\n');
         closeProgram(1);
         process.exit(1);
     }
@@ -790,6 +675,7 @@ function init_get() {
 function textGet() {
     debug('Awaiting text input ...\n');
     return new Promise((resolve) => {
+        const old_init_cycle = wAIfu.init_cycle;
         let text = null;
         let resolved = false;
         if (wAIfu.live_chat && wAIfu.started) {
@@ -812,6 +698,10 @@ function textGet() {
                 resolved = true;
                 resolve(text);
             }
+            else if (wAIfu.init_cycle !== old_init_cycle) {
+                resolved = true;
+                resolve(null);
+            }
             else {
                 setTimeout(checkQueue, 250);
             }
@@ -821,6 +711,7 @@ function textGet() {
 }
 function voiceGet() {
     return new Promise((resolve) => {
+        const old_init_cycle = wAIfu.init_cycle;
         let text = null;
         let resolved = false;
         if (wAIfu.live_chat && wAIfu.started) {
@@ -847,6 +738,10 @@ function voiceGet() {
                     text = null;
                 resolved = true;
                 resolve(text);
+            }
+            else if (wAIfu.init_cycle !== old_init_cycle) {
+                resolved = true;
+                resolve(null);
             }
             else {
                 setTimeout(checkFile, 250);
@@ -980,21 +875,11 @@ function awaitProcessLoaded(proc) {
         setTimeout(checkloaded, 500);
     });
 }
-function awaitDevicesResponse() {
-    return new Promise((resolve) => {
-        let received = false;
-        const checkreceived = () => {
-            if (received)
-                return;
-            if (Object.keys(wAIfu.audio_devices).length === 0) {
-                setTimeout(checkreceived, 250);
-            }
-            else {
-                received = true;
-                resolve();
-                return;
-            }
-        };
-        setTimeout(checkreceived, 500);
-    });
+function getDevices() {
+    if (fs.existsSync('./devices/devices.json')) {
+        fs.unlinkSync('./devices/devices.json');
+    }
+    cproc.spawnSync('python', ['audio_devices.py'], { cwd: './devices' });
+    const data = fs.readFileSync('./devices/devices.json');
+    wAIfu.audio_devices = JSON.parse(data.toString('utf8'));
 }

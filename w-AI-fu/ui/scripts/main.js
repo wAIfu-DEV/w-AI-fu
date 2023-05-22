@@ -30,7 +30,7 @@ class DOMobject {
     }
     /**
      * @returns {void}
-     * @param {string} signal 
+     * @param {'click'|'change'|'input'} signal 
      * @param {EventListenerOrEventListenerObject} callback */
     on(signal, callback) {
         this.element.addEventListener(signal, callback);
@@ -64,6 +64,8 @@ class DOM {
     }
 }
 
+/** @type {WebSocket} */
+const ws = new WebSocket('ws://127.0.0.1:7870');
 let config = {};
 let chara = {};
 let chars_list = [];
@@ -74,22 +76,57 @@ let prevent_send = false;
 
 (async function() {
     console.log('%c⚠️ DO NOT COPY ANYTHING IN THIS CONSOLE ⚠️\nCopying and pasting scripts here might expose your confidential informations or modify the configuration of w-AI-fu for nefarious reasons.\n', 'color: rgb(255, 0, 0);background-color: rgb(0, 0, 0)');
-    await getAuth();
-    await getLatest();
-    stillAlive();
-})();
 
-const stillAlive = async() => {
-    try {
-        let resp = await fetch('http://127.0.0.1:7860/alive');
-        await resp.text();
-    } catch(e) {
-        //window.close();
+    ws.onopen = async() => {
+        ws.onmessage = (data) => handleSocketMessage(data.data);
+
+        await getAuth();
+        await getLatest();
+    };
+
+    ws.onclose = () => {
         document.title = "Error";
         alert('Could not reach the w-AI-fu application, it may have been closed.');
         throw new Error('Unable to contact core NodeJS application server.');
     }
-    setTimeout(stillAlive, 5 * 1000);
+})();
+
+async function handleSocketMessage(data) {
+    const message = String(data);
+    let type = message.split(' ')[0];
+    if (type === undefined) type = message;
+    const payload = (type.length === message.length)
+                    ? ''
+                    : message.substring(type.length + 1, undefined);
+    switch (type) {
+        case 'MSG_IN': {
+            addConsoleBubble(true, payload);
+            return;
+        }
+        case 'MSG_CHAT': {
+            addChatBubble(payload);
+            return;
+        }
+        case 'MSG_OUT': {
+            const data = JSON.parse(payload);
+            if (data["filtered"] !== null) {
+                addFilteredBubble(data["filtered"]);
+            }
+            else
+                addConsoleBubble(false, data["text"]);
+            return;
+        }
+        case 'AUTH': {
+            ws.dispatchEvent(new CustomEvent('auth', {detail: JSON.parse(payload)}));
+            return;
+        }
+        case 'LATEST': {
+            ws.dispatchEvent(new CustomEvent('latest', {detail: JSON.parse(payload)}));
+            return;
+        }
+        default: 
+            return;
+    };
 }
 
 DOM.query('ConsoleInputField').on('keydown', (ke) => {
@@ -108,14 +145,7 @@ DOM.queryAll('input[auth]').forEach((obj) => {
             "playht-user": getValueById("playht-user")
         }
 
-        const resp = await fetch('http://127.0.0.1:7860/setauth', {
-            method: 'POST',
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(json_obj)
-        });
-        const data = await resp.text();
+        ws.send('AUTH_SET ' + JSON.stringify(json_obj));
     });
 });
 
@@ -141,6 +171,7 @@ DOM.query('CharacterSaveButton').on('click', async() => {
         "craziness": Number(DOM.getId('craziness').get('value')),
         "creativity": Number(DOM.getId('creativity').get('value'))
     };
+    /*
     const resp = await fetch('http://127.0.0.1:7860/savechar', {
         method: 'POST',
         headers: {
@@ -148,7 +179,8 @@ DOM.query('CharacterSaveButton').on('click', async() => {
         },
         body: JSON.stringify(new_chara)
     });
-    const data = await resp.text();
+    const data = await resp.text();*/
+    ws.send('CHARA ' + JSON.stringify(new_chara));
     await setConfig('character_name', new_chara.char_name);
     await getLatest();
 });
@@ -220,35 +252,42 @@ ld_ch.addEventListener('change', () => {
 });
 
 async function getLatest() {
-    const resp = await fetch('http://127.0.0.1:7860/latest');
-    const data = await resp.json();
-    config = data["config"];
-    chara = data["character"];
-    chars_list = data["chars_list"];
-    version = data["version"];
-    audio_devices = data["audio_devices"];
-    setLatestData();
+    return new Promise((resolve) => {
+        const el = (e) => {
+            const data = e.detail;
+            config = data["config"];
+            chara = data["character"];
+            chars_list = data["chars_list"];
+            version = data["version"];
+            audio_devices = data["audio_devices"];
+            setLatestData();
+            ws.removeEventListener('latest', el);
+            resolve();
+        };
+        ws.addEventListener('latest', el);
+        ws.send('LATEST');
+    });
 }
 
 async function getAuth() {
-    const resp = await fetch('http://127.0.0.1:7860/getauth');
-    const data = await resp.json();
-    
-    setValueById('novel-mail', data['novel-mail']);
-    setValueById('novel-pass', data['novel-pass']);
-    setValueById('twitch-oauth', data['twitch-oauth']);
-    setValueById('playht-auth', data['playht-auth']);
-    setValueById('playht-user', data['playht-user']);
+    return new Promise((resolve) => {
+        const el = (e) => {
+            const data = e.detail;
+            setValueById('novel-mail', data['novel-mail']);
+            setValueById('novel-pass', data['novel-pass']);
+            setValueById('twitch-oauth', data['twitch-oauth']);
+            setValueById('playht-auth', data['playht-auth']);
+            setValueById('playht-user', data['playht-user']);
+            ws.removeEventListener('auth', el);
+            resolve();
+        };
+        ws.addEventListener('auth', el);
+        ws.send('AUTH_GET');
+    });
 }
 
 async function sendCommand(text) {
-    await fetch('http://127.0.0.1:7860/command', {
-        method: 'POST',
-        headers: {
-            "Content-Type": "text/plain"
-        },
-        body: text
-    });
+    ws.send('MSG ' + text);
 }
 
 function clearConsole() {
@@ -274,30 +313,7 @@ async function sendInput() {
         last_username = cnf.textContent;
     }
 
-    addConsoleBubble(true, input_data);
-    
-    const temp_bubble = addConsoleBubble(false, '•••');
-
-    prevent_send = true;
-
-    const resp = await fetch('http://127.0.0.1:7860/input', {
-        method: 'POST',
-        headers: {
-            "Content-Type": "text/plain"
-        },
-        body: input_data
-    });
-    const data = await resp.json();
-
-    temp_bubble.parentElement.removeChild(temp_bubble);
-
-    if (data["filtered"] !== null) {
-        addFilteredBubble(data["filtered"]);
-    }
-    else
-        addConsoleBubble(false, data["text"]);
-    
-    prevent_send = false;
+    ws.send('MSG ' + input_data);
 }
 
 function addConsoleBubble(input, text) {
@@ -333,22 +349,33 @@ function addErrorBubble(error) {
     const view = document.querySelector('ConsoleView');
     view.innerHTML +=
         `<ConsoleViewSection>
-            <ConsoleBubbleFiltered>
+            <ConsoleBubbleError>
                 [ ERROR ]
                 <p>${error.trim()}</p>
-            </ConsoleBubbleFiltered>
+            </ConsoleBubbleError>
         </ConsoleViewSection>`;
     view.scrollTo(0, view.scrollHeight);
 }
 
+function addChatBubble(message) {
+    const data = JSON.parse(message);
+
+    const view = document.querySelector('ConsoleView');
+    const viewsec = document.createElement('ConsoleViewSection');
+    const viewbb = document.createElement('ConsoleBubbleChat');
+    const bbp = document.createElement('p');
+
+    view.appendChild(viewsec);
+    viewsec.appendChild(viewbb);
+    viewbb.textContent = data.user;
+    viewbb.appendChild(bbp);
+    bbp.textContent = data.text.trim();
+
+    view.scrollTo(0, view.scrollHeight);
+}
+
 async function setConfig(name, value) {
-    await fetch('http://127.0.0.1:7860/config', {
-        method: 'POST',
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({"name": name, "value": value})
-    });
+    ws.send('CONFIG ' + JSON.stringify({"name": name, "value": value}));
     if (value === "on") value = true;
     if (value === "off") value = false;
     config[name] = value;
@@ -504,7 +531,7 @@ function getTextByQuery(query) {
 }
 
 function interrupt() {
-    fetch('http://127.0.0.1:7860/interrupt');
+    ws.send('INTERRUPT');
 }
 
 function verifyAuth() {

@@ -1,5 +1,5 @@
 import pyaudio
-import requests
+import json
 
 def send_devices():
     p = pyaudio.PyAudio()
@@ -8,8 +8,10 @@ def send_devices():
     for i in range(0, device_count):
         info = p.get_device_info_by_index(i)
         obj[info["name"].strip()] = info["index"]
-        #print(f'[{info["index"]}] {info["name"]}')
-    req = requests.post('http://127.0.0.1:7860/setdevices', json=obj)
-    print(req.text)
+    default_device = p.get_default_output_device_info()
+    obj["default"] = default_device["name"].strip()
+    f = open('devices.json', 'w')
+    json.dump(obj, f)
+    f.close()
 
 send_devices()
