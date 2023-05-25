@@ -72,7 +72,7 @@ def api():
         return jsonify({'message': 'OK'}), 200
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return '', 500
 
 
 def generate_tts(speak, voice_seed):
