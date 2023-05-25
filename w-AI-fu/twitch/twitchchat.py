@@ -22,7 +22,7 @@ async def api():
 async def run():
     global channel
     data = request.get_json()
-    channel = data['data'][0]
+    channel = re.sub('[^a-zA-Z0-9\_\-]', '', data['data'][0])
     ws = websocket.WebSocketApp('wss://irc-ws.chat.twitch.tv:443',
                                 on_open=on_open,
                                 on_message=on_message,
