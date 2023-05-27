@@ -128,6 +128,4 @@ if __name__ == '__main__':
     device_index = int(obj["audio_device"])
     pht_auth = os.environ['NAI_PASSWORD']
     pht_user = os.environ['NAI_USERNAME']
-    print(pht_user)
-    print(pht_auth)
     app.run(host='127.0.0.1', port=7850)
