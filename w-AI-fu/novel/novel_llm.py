@@ -39,7 +39,7 @@ async def generate(custom_prompt, craziness, creativity):
         #preset = Preset.from_official(model, "Moonlit Chronicler")
         #preset = Preset.from_official(model, "Top Gun Beta")
         #preset = Preset.from_default(model)
-        preset["max_length"] = 90 #40
+        preset["max_length"] = 120 #40
         preset["min_length"] = 1 #1
         preset["repetition_penalty"] = 1 + craziness #1.75 #1.15375 #1.1537
         #preset["repetition_penalty_frequency"] = 0 #0
@@ -55,7 +55,7 @@ async def generate(custom_prompt, craziness, creativity):
         preset["stop_sequences"] = [[198], [628], [25]]
         global_settings = GlobalSettings(num_logprobs=GlobalSettings.NO_LOGPROBS)
         global_settings["bias_dinkus_asterism"] = False
-        global_settings["generate_until_sentence"] = True
+        global_settings["generate_until_sentence"] = False
         global_settings["ban_ambiguous_genji_tokens"] = True
         bias_groups: List[BiasGroup] = []
         module = 'vanilla'

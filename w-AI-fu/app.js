@@ -26,21 +26,26 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const DEBUGMODE = false;
 const fs = __importStar(require("fs"));
 const cproc = __importStar(require("child_process"));
-const events_1 = require("events");
 const ws_1 = require("ws");
-const fetch = require('node-fetch');
 const { resolve } = require('path');
 const readline = require('readline/promises');
 const readline_interface = readline.createInterface(process.stdin, process.stdout);
+var ErrorCode;
+(function (ErrorCode) {
+    ErrorCode[ErrorCode["None"] = 0] = "None";
+    ErrorCode[ErrorCode["UnHandeld"] = 1] = "UnHandeld";
+    ErrorCode[ErrorCode["InvalidValue"] = 2] = "InvalidValue";
+    ErrorCode[ErrorCode["HTTPError"] = 3] = "HTTPError";
+})(ErrorCode || (ErrorCode = {}));
 const wss = new ws_1.WebSocketServer({ host: '127.0.0.1', port: 7870 });
 let ws = null;
 wss.on('connection', function connection(socket) {
     debug('connected ws server.\n');
     ws = socket;
     ws.on('error', console.error);
-    ws.on('message', (data) => handleSocketMessage(ws, data));
+    ws.on('message', (data) => handleSocketMessage(data));
 });
-async function handleSocketMessage(ws, data) {
+async function handleSocketMessage(data) {
     const message = String(data);
     let type = message.split(' ')[0];
     if (type === undefined)
@@ -108,32 +113,27 @@ function wsLATEST() {
 }
 function wsCONFIG(data) {
     const obj = JSON.parse(data);
-    const config_field = obj.name;
-    let new_value = obj.value;
-    if (new_value === 'on')
-        new_value = true;
-    if (new_value === 'off')
-        new_value = false;
-    debug(`changed value of ${config_field} to: ${new_value}\n`);
-    modifyConfig(config_field, new_value);
-    handleCommand('!reload');
+    wAIfu.config = obj;
+    fs.writeFileSync('../config.json', data);
+    wAIfu.should_reload = true;
 }
 function wsAUTH_GET() {
     ws.send('AUTH ' + JSON.stringify({
-        "novel-mail": fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim(),
-        "novel-pass": fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim(),
-        "twitch-oauth": fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim(),
-        "playht-auth": fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim(),
-        "playht-user": fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim()
+        "novel-mail": getAuth('novel_user'),
+        "novel-pass": getAuth('novel_pass'),
+        "twitch-oauth": getAuth('twitch_oauth'),
+        "playht-auth": getAuth('play-ht_auth'),
+        "playht-user": getAuth('play-ht_user')
     }));
 }
 function wsAUTH_SET(data) {
     const obj = JSON.parse(data);
-    fs.writeFileSync('../UserData/auth/novel_user.txt', obj["novel-mail"]);
-    fs.writeFileSync('../UserData/auth/novel_pass.txt', obj["novel-pass"]);
-    fs.writeFileSync('../UserData/auth/twitch_oauth.txt', obj["twitch-oauth"]);
-    fs.writeFileSync('../UserData/auth/play-ht_auth.txt', obj["playht-auth"]);
-    fs.writeFileSync('../UserData/auth/play-ht_user.txt', obj["playht-user"]);
+    setAuth('novel_user', obj["novel-mail"]);
+    setAuth('novel_pass', obj["novel-pass"]);
+    setAuth('twitch_oauth', obj["twitch-oauth"]);
+    setAuth('play-ht_auth', obj["playht-auth"]);
+    setAuth('play-ht_user', obj["playht-user"]);
+    wAIfu.should_reload = true;
 }
 function wsCHARA(data) {
     const obj = JSON.parse(data);
@@ -157,6 +157,7 @@ class Config {
     is_voice_input = false;
     parrot_mode = false;
     read_live_chat = false;
+    monologue = false;
     tts_use_playht = false;
     twitch_channel_name = '';
     chat_read_timeout_sec = 2;
@@ -168,6 +169,7 @@ class Character {
     voice = '';
     char_persona = '';
     example_dialogue = '';
+    topics = [];
     craziness = 0.5;
     creativity = 0.5;
 }
@@ -190,9 +192,9 @@ class wAIfuApp {
     package = new Package();
     character = new Character();
     memory = new Memory();
-    emitter = new events_1.EventEmitter();
     audio_devices = {};
     init_cycle = 0;
+    should_reload = false;
 }
 const wAIfu = new wAIfuApp();
 class SubProc {
@@ -214,6 +216,10 @@ async function main() {
         const inputObj = await getInput(wAIfu.input_mode);
         if (inputObj === null)
             continue main_loop;
+        if (wAIfu.should_reload === true) {
+            await handleCommand('!reload');
+            wAIfu.should_reload = false;
+        }
         const { input, sender, pseudo } = inputObj;
         const is_chat = sender === 'CHAT';
         const handled = (is_chat)
@@ -254,18 +260,20 @@ async function main() {
                 "filtered": filtered_content
             }));
         }
-        const new_memory = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`;
-        wAIfu.memory.short_term.push(new_memory);
-        wAIfu.dialog_transcript += new_memory;
-        if (is_chat)
-            addChatMemory(pseudo, new_memory);
+        if (filtered_content === null) {
+            const new_memory = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`;
+            wAIfu.memory.short_term.push(new_memory);
+            wAIfu.dialog_transcript += new_memory;
+            if (is_chat)
+                addChatMemory(pseudo, new_memory);
+        }
         await sendToTTS(displayed);
         exposeCaptions('');
         continue;
     }
 }
 async function init() {
-    process.title = 'w-AI-fu';
+    process.title = 'w-AI-fu Console';
     wAIfu.package = getPackage();
     put(`w-AI-fu ${wAIfu.package.version}\n`);
     put('Loading config informations ...\n');
@@ -310,7 +318,7 @@ async function reinit() {
     await summonProcesses(wAIfu.input_mode);
 }
 function flattenMemory(additional) {
-    while (wAIfu.memory.short_term.length > 5) {
+    while (wAIfu.memory.short_term.length > 4) {
         wAIfu.memory.short_term.shift();
     }
     return wAIfu.memory.long_term
@@ -318,11 +326,11 @@ function flattenMemory(additional) {
         + wAIfu.memory.short_term.join('');
 }
 function isAuthCorrect() {
-    const USR = fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim();
-    const PSW = fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim();
-    const OAU = fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim();
-    const PTA = fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim();
-    const PTU = fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim();
+    const USR = getAuth('novel_user');
+    const PSW = getAuth('novel_pass');
+    const OAU = getAuth('twitch_oauth');
+    const PTA = getAuth('play-ht_auth');
+    const PTU = getAuth('play-ht_user');
     if (USR === '') {
         put('Validation Error: NovelAI account mail adress is missing from UserData/auth/novel_user.txt\n');
         return false;
@@ -392,6 +400,15 @@ async function getInput(mode) {
     }
     if (result === null && wAIfu.live_chat) {
         const { message, name } = await getChatOrNothing();
+        if (wAIfu.config.monologue === true && message === '' && name === '') {
+            let rdm = Math.random();
+            let topic = wAIfu.character.topics[Math.round((wAIfu.character.topics.length - 1) * rdm)];
+            if (topic === undefined) {
+                put('Critical Error: topic was undefined\n');
+                closeProgram(1);
+            }
+            return { input: `!mono ${topic}`, sender: 'USER', pseudo: '' };
+        }
         result = message;
         pseudo = name;
         sender = 'CHAT';
@@ -467,16 +484,16 @@ async function summonProcesses(mode) {
 async function startLLM() {
     if (LLM.running)
         return;
-    const USR = fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim();
-    const PSW = fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim();
+    const USR = getAuth('novel_user');
+    const PSW = getAuth('novel_pass');
     LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
     LLM.running = true;
 }
 async function startTTS() {
     if (TTS.running)
         return;
-    const USR = fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim();
-    const PSW = fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim();
+    const USR = (wAIfu.config.tts_use_playht) ? getAuth('play-ht_user') : getAuth('novel_user');
+    const PSW = (wAIfu.config.tts_use_playht) ? getAuth('play-ht_auth') : getAuth('novel_pass');
     const tts_provider = (wAIfu.config.tts_use_playht) ? 'playht_tts.py' : 'novel_tts.py';
     TTS.process = cproc.spawn('python', [tts_provider], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
     TTS.running = true;
@@ -484,7 +501,8 @@ async function startTTS() {
 async function startLiveChat() {
     if (CHAT.running)
         return;
-    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', detached: DEBUGMODE, shell: DEBUGMODE });
+    const OAUTH = getAuth('twitch_oauth');
+    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH }, detached: DEBUGMODE, shell: DEBUGMODE });
     CHAT.running = true;
 }
 async function startSTT() {
@@ -500,8 +518,18 @@ async function sendToLLM(prompt) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: payload
+    }).catch((e) => {
+        put('Error: Could not contact the LLM subprocess.\n');
+        console.log(e);
+        closeProgram(ErrorCode.HTTPError);
     });
-    const data = await post_query.json();
+    const text = await post_query.text();
+    if (text[0] !== undefined && text[0] !== '{') {
+        put('Error: Received incorrect json from LLM.\n');
+        console.log(text);
+        closeProgram(ErrorCode.InvalidValue);
+    }
+    const data = JSON.parse(text);
     const raw = Buffer.from(data.data[0], 'base64');
     debug('received: ' + JSON.stringify({ "data": raw.toString('utf-8') }) + '\n');
     let response = raw.toString('utf-8').replace(/\n.*/, '');
@@ -513,10 +541,8 @@ async function handleCommand(command) {
     if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
         if (wAIfu.input_mode === InputMode.Voice)
             put(command + '\n');
-        wAIfu.emitter.emit('response', {
-            "text": command,
-            "filtered": null
-        });
+        ws.send(`MSG_IN ${command}`);
+        ws.send(`MSG_OUT ${JSON.stringify({ "text": command, "filtered": null })}`);
         command = '!say ' + command;
     }
     if (command.length > 0 && command[0] !== '!')
@@ -574,7 +600,7 @@ async function handleCommand(command) {
             return null;
         }
         case '!reload': {
-            closeSubProcesses();
+            await closeSubProcesses();
             await reinit();
             return null;
         }
@@ -619,6 +645,12 @@ async function handleCommand(command) {
             console.log(wAIfu);
             return null;
         }
+        case '!mono': {
+            const topic = command.substring('!mono '.length, undefined).trim();
+            put(`[ ${wAIfu.character.char_name} starts talking about ${topic}. ]\n`);
+            await monologue(topic);
+            return null;
+        }
         default:
             put('Invalid command.\n');
             return null;
@@ -652,16 +684,39 @@ async function sendToTTS(say) {
             "Content-Type": "application/json"
         },
         body: payload
+    }).catch((e) => {
+        put('Error: Could not contact the TTS subprocess.\n');
+        console.log(e);
+        closeProgram(ErrorCode.HTTPError);
     });
-    const data = await post_query.json();
+    const text = await post_query.text();
+    if (text[0] !== undefined && text[0] !== '{') {
+        put('Error: Received incorrect json from TTS.\n');
+        console.log(text);
+        closeProgram(ErrorCode.InvalidValue);
+    }
+    const data = JSON.parse(text);
     debug('received: ' + JSON.stringify(data) + '\n');
     if (data["message"] === 'AUDIO_ERROR') {
         put('Error: Could not play TTS because of invalid output audio device.\n');
     }
+    if (data["message"] === 'GENERATION_ERROR') {
+        put('Error: Could not play TTS because of an error with the NovelAI API.\n');
+    }
 }
 async function getLastTwitchChat() {
-    const get_query = await fetch(CHAT.api_url + '/api');
-    const data = await get_query.json();
+    const get_query = await fetch(CHAT.api_url + '/api').catch((e) => {
+        put('Error: Could not contact the CHAT subprocess.\n');
+        console.log(e);
+        closeProgram(ErrorCode.HTTPError);
+    });
+    const text = await get_query.text();
+    if (text[0] !== undefined && text[0] !== '{') {
+        put('Error: Received incorrect json from CHAT.\n');
+        console.log(text);
+        closeProgram(ErrorCode.InvalidValue);
+    }
+    const data = JSON.parse(text);
     debug('received: ' + JSON.stringify(data) + '\n');
     return data;
 }
@@ -690,17 +745,17 @@ function textGet() {
         const checkQueue = () => {
             if (resolved)
                 return;
-            if (wAIfu.command_queue.length > 0) {
+            if (wAIfu.init_cycle !== old_init_cycle) {
+                resolved = true;
+                resolve(null);
+            }
+            else if (wAIfu.command_queue.length > 0) {
                 debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
                 text = wAIfu.command_queue.shift();
                 if (text === undefined)
                     text = null;
                 resolved = true;
                 resolve(text);
-            }
-            else if (wAIfu.init_cycle !== old_init_cycle) {
-                resolved = true;
-                resolve(null);
             }
             else {
                 setTimeout(checkQueue, 250);
@@ -725,7 +780,11 @@ function voiceGet() {
         const checkFile = () => {
             if (resolved)
                 return;
-            if (fs.existsSync('./speech/input.txt')) {
+            if (wAIfu.init_cycle !== old_init_cycle) {
+                resolved = true;
+                resolve(null);
+            }
+            else if (fs.existsSync('./speech/input.txt')) {
                 text = fs.readFileSync('./speech/input.txt').toString('utf8');
                 fs.unlinkSync('./speech/input.txt');
                 resolved = true;
@@ -739,10 +798,6 @@ function voiceGet() {
                 resolved = true;
                 resolve(text);
             }
-            else if (wAIfu.init_cycle !== old_init_cycle) {
-                resolved = true;
-                resolve(null);
-            }
             else {
                 setTimeout(checkFile, 250);
             }
@@ -750,24 +805,56 @@ function voiceGet() {
         checkFile();
     });
 }
-function closeSubProcesses() {
+async function monologue(topic) {
+    const prompt = `[${wAIfu.character.char_name} starts talking about ${topic}]\n${wAIfu.character.char_name}:`;
+    let displayed = '';
+    let filtered_txt = null;
+    const response = await sendToLLM(flattenMemory('') + prompt);
+    displayed = response;
+    if (verifyText(response) === true) {
+        filtered_txt = response;
+        displayed = ' Filtered.\n';
+    }
+    put(`${wAIfu.character.char_name}:${displayed}`);
+    exposeCaptions(displayed);
+    if (ws !== null && ws.readyState === ws.OPEN) {
+        ws.send('MSG_OUT ' + JSON.stringify({ "text": displayed, "filtered": filtered_txt }));
+    }
+    if (filtered_txt === null) {
+        const new_memory = `${prompt}${displayed}`;
+        wAIfu.memory.short_term.push(new_memory);
+        wAIfu.dialog_transcript += new_memory;
+    }
+    await sendToTTS(displayed);
+    exposeCaptions('');
+}
+async function closeSubProcesses() {
     put('Killing subprocesses ...\n');
-    killProc(CHAT, 'CHAT');
-    killProc(LLM, 'LLM');
-    killProc(TTS, 'TTS');
-    killProc(STT, 'STT');
+    await killProc(CHAT, 'CHAT');
+    await killProc(LLM, 'LLM');
+    await killProc(TTS, 'TTS');
+    await killProc(STT, 'STT');
 }
 function killProc(proc, proc_name) {
-    if (proc.process !== null && proc.running) {
-        proc.process.on('close', () => put(`Closed ${proc_name}.\n`));
-        let success = proc.process.kill(2);
-        if (!success)
-            put(`Error: Could not kill process ${proc_name}.\n`);
-        else
-            proc.running = false;
-    }
+    return new Promise((resolve) => {
+        if (proc.process !== null && proc.running) {
+            proc.process.on('close', () => {
+                put(`Closed ${proc_name}.\n`);
+                proc.process = null;
+                resolve();
+            });
+            let success = proc.process.kill(2);
+            if (!success)
+                put(`Error: Could not kill process ${proc_name}.\n`);
+            else
+                proc.running = false;
+        }
+        else {
+            resolve();
+        }
+    });
 }
-function closeProgram(code) {
+function closeProgram(code = 0) {
     closeSubProcesses();
     put('Exiting w.AI.fu\n');
     process.exit(code);
@@ -853,6 +940,12 @@ function retreiveCharacters() {
     return result;
 }
 function modifyConfig(field, value) {
+    if (value === null || value === undefined) {
+        throw new Error('Tried assigning invalid value to config field: ' + field);
+    }
+    if (wAIfu.config[field] === undefined) {
+        throw new Error('Tried assigning value to inecistant config field: ' + field);
+    }
     wAIfu.config[field] = value;
     fs.writeFileSync('../config.json', JSON.stringify(wAIfu.config));
 }
@@ -882,4 +975,19 @@ function getDevices() {
     cproc.spawnSync('python', ['audio_devices.py'], { cwd: './devices' });
     const data = fs.readFileSync('./devices/devices.json');
     wAIfu.audio_devices = JSON.parse(data.toString('utf8'));
+}
+function getAuth(what) {
+    return basic_decode(fs.readFileSync(`../UserData/auth/${what}.txt`));
+}
+function setAuth(what, data) {
+    fs.writeFileSync(`../UserData/auth/${what}.txt`, basic_encode(data));
+}
+function basic_encode(data) {
+    let b64 = Buffer.from(data, 'utf8').toString('base64');
+    let hex = Buffer.from(b64, 'base64').toString('hex');
+    return hex;
+}
+function basic_decode(data) {
+    let b64 = Buffer.from(data.toString(), 'hex').toString('base64');
+    return Buffer.from(b64, 'base64').toString('utf8');
 }

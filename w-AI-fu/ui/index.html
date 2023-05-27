@@ -68,6 +68,11 @@
                     <FlipFlop flip="off" flop="on" value="off" config="read_live_chat">off</FlipFlop>
                 </ConfigLine>
                 <Spacer></Spacer>
+                <ConfigLine title="Makes the character rant about topics of interest. Read Twitch Chat must be on.">
+                    <Label>Monologue</Label>
+                    <FlipFlop flip="off" flop="on" value="off" config="monologue">off</FlipFlop>
+                </ConfigLine>
+                <Spacer></Spacer>
                 <ConfigLine title="Makes the character repeat everything you say or type">
                     <Label>Parrot Mode</Label>
                     <FlipFlop flip="off" flop="on" value="off" config="parrot_mode">off</FlipFlop>
@@ -95,6 +100,9 @@
                 <Label>Output Audio Device</Label>
                 <select id="audio-device"></select>
             </ConfigLine>
+        </ConfigLong>
+        <ConfigLong>
+            <ConfigSaveButton class="BigRedButton">Confirm</ConfigSaveButton>
         </ConfigLong>
     </Section>
     <Section>
@@ -127,7 +135,7 @@
                 <Label id="creativity-label">0.5</Label>
             </RangeLine>
             <Spacer></Spacer>
-            <CharacterSaveButton>Save Character</CharacterSaveButton>
+            <CharacterSaveButton class="BigRedButton">Save Character</CharacterSaveButton>
             <CharacterDownloadButton>Download .json</CharacterDownloadButton>
         </CharacterSheet>
     </Section>
@@ -167,6 +175,9 @@
                 <Label>(OPTIONAL) Play.ht User Token</Label>
                 <input id="playht-user" class="TextInputBox" type="password" value="" auth>
             </ConfigLine>
+            <ConfigLong>
+                <AuthSaveButton class="BigRedButton">Confirm</AuthSaveButton>
+            </ConfigLong>
         </Auth>
     </Section>
     <script src="scripts/main.js"></script>

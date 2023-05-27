@@ -31,7 +31,14 @@ async def api():
         return _build_cors_preflight_response()
 
     data = request.get_json()
-    await generate_tts(speak=data['data'][0], voice_seed=data['data'][1])
+
+    try:
+        await generate_tts(speak=data['data'][0], voice_seed=data['data'][1])
+    except:
+        response = jsonify({'message': 'GENERATION_ERROR'})
+        response.headers.add("Access-Control-Allow-Origin", "*")
+        return response, 500 
+
     if play_tts() == True:
         response = jsonify({'message': 'OK'})
         response.headers.add("Access-Control-Allow-Origin", "*")
@@ -84,6 +91,7 @@ def play_tts():
                                         output=True,
                                         output_device_index=device_index) # Set the input device index to the virtual audio cable
     except:
+        wave_file.close()
         return False
     # Read data from the wave file and capture it from the virtual audio cable
     data = wave_file.readframes(8192) #1024

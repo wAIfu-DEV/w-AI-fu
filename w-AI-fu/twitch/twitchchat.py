@@ -1,6 +1,6 @@
 import websocket
 import re
-from os import system
+import os
 
 from flask import Flask, jsonify, request
 
@@ -22,7 +22,7 @@ async def api():
 async def run():
     global channel
     data = request.get_json()
-    channel = data['data'][0]
+    channel = re.sub('[^a-zA-Z0-9\_\-]', '', data['data'][0])
     ws = websocket.WebSocketApp('wss://irc-ws.chat.twitch.tv:443',
                                 on_open=on_open,
                                 on_message=on_message,
@@ -63,9 +63,7 @@ def on_close(ws, close_status_code, close_msg):
 
 def on_open(ws):
     global channel
-    f = open('../../UserData/auth/twitch_oauth.txt', 'r')
-    oauth = f.read()
-    f.close()
+    oauth = os.environ['OAUTH']
     ws.send(f'PASS oauth:{oauth}')
     ws.send(f'NICK {channel}')
     ws.send(f'JOIN #{channel}')

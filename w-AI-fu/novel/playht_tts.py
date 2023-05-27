@@ -72,7 +72,7 @@ def api():
         return jsonify({'message': 'OK'}), 200
     except Exception as e:
         print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return '', 500
 
 
 def generate_tts(speak, voice_seed):
@@ -126,12 +126,8 @@ if __name__ == '__main__':
     obj = json.loads(f.read())
     f.close()
     device_index = int(obj["audio_device"])
-    f = open('../../UserData/auth/play-ht_auth.txt', 'r')
-    pht_auth = f.read()
-    f.close()
-    f = open('../../UserData/auth/play-ht_user.txt', 'r')
-    pht_user = f.read()
-    f.close()
+    pht_auth = os.environ['NAI_PASSWORD']
+    pht_user = os.environ['NAI_USERNAME']
     print(pht_user)
     print(pht_auth)
     app.run(host='127.0.0.1', port=7850)

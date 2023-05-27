@@ -68,6 +68,7 @@ class DOM {
 const ws = new WebSocket('ws://127.0.0.1:7870');
 let config = {};
 let chara = {};
+let auth = {};
 let chars_list = [];
 let audio_devices = {};
 let version = '';
@@ -135,18 +136,16 @@ DOM.query('ConsoleInputField').on('keydown', (ke) => {
     sendInput();
 });
 
-DOM.queryAll('input[auth]').forEach((obj) => {
-    obj.on('change', async() => {
-        const json_obj = {
-            "novel-mail": getValueById("novel-mail"),
-            "novel-pass": getValueById("novel-pass"),
-            "twitch-oauth": getValueById("twitch-oauth"),
-            "playht-auth": getValueById("playht-auth"),
-            "playht-user": getValueById("playht-user")
-        }
-
-        ws.send('AUTH_SET ' + JSON.stringify(json_obj));
-    });
+DOM.query('AuthSaveButton').on('click', () => {
+    auth = {
+        "novel-mail": getValueById("novel-mail"),
+        "novel-pass": getValueById("novel-pass"),
+        "twitch-oauth": getValueById("twitch-oauth"),
+        "playht-auth": getValueById("playht-auth"),
+        "playht-user": getValueById("playht-user")
+    }
+    ws.send('AUTH_SET ' + JSON.stringify(auth));
+    ws.send('CONFIG ' + JSON.stringify(config));
 });
 
 DOM.getId('craziness').self((ref) => {
@@ -171,15 +170,6 @@ DOM.query('CharacterSaveButton').on('click', async() => {
         "craziness": Number(DOM.getId('craziness').get('value')),
         "creativity": Number(DOM.getId('creativity').get('value'))
     };
-    /*
-    const resp = await fetch('http://127.0.0.1:7860/savechar', {
-        method: 'POST',
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify(new_chara)
-    });
-    const data = await resp.text();*/
     ws.send('CHARA ' + JSON.stringify(new_chara));
     await setConfig('character_name', new_chara.char_name);
     await getLatest();
@@ -237,6 +227,12 @@ DOM.query('DisplayAuthButton').self((ref) => {
             ref.set('textContent', 'Shrink ▴');
             setTimeout(window.scrollTo(0, document.body.scrollHeight),0);
         }
+    });
+});
+
+DOM.query('ConfigSaveButton').self(ref => {
+    ref.on('click', () => {
+        ws.send('CONFIG ' + JSON.stringify(config));
     });
 });
 
@@ -375,7 +371,7 @@ function addChatBubble(message) {
 }
 
 async function setConfig(name, value) {
-    ws.send('CONFIG ' + JSON.stringify({"name": name, "value": value}));
+    //ws.send('CONFIG ' + JSON.stringify({"name": name, "value": value}));
     if (value === "on") value = true;
     if (value === "off") value = false;
     config[name] = value;
@@ -427,15 +423,20 @@ function setLatestData() {
     const m = document.querySelector('FlipFlop[config="parrot_mode"]');
     m.textContent = (config.parrot_mode) ? 'on' : 'off';
     m.setAttribute('value', m.textContent);
+    const m2 = document.querySelector('FlipFlop[config="monologue"]');
+    m2.textContent = (config.monologue) ? 'on' : 'off';
+    m2.setAttribute('value', m2.textContent);
     const n = document.querySelector('VersionString');
     n.textContent = version;
     const o = document.getElementById('twitch-name');
     o.value = config.twitch_channel_name;
     const p = document.getElementById('audio-device');
     for(let s in audio_devices) {
-        if (audio_devices[s] !== config.audio_device) {
+        if (config.audio_device === -1 && s === 'default') {
+            p.innerHTML = `<option>${audio_devices[s]}</option>` + p.innerHTML 
+        } else if (audio_devices[s] !== config.audio_device) {
             p.innerHTML += `<option>${s}</option>`;
-        } else {
+        } else  {
             p.innerHTML = `<option>${s}</option>` + p.innerHTML 
         }
     }

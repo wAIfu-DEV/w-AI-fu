@@ -11,7 +11,8 @@
     
     Entry Point: main()
 
-    TODO:
+    TODO: Maube split this up in multiple module files, this is getting to the 
+        point of being way too big.
 
     License: GPLv3 see ../LICENSE.txt and end of file.
 */
@@ -21,14 +22,21 @@ const DEBUGMODE: boolean = false;
 
 import * as fs from 'fs';
 import * as cproc from 'child_process';
-import { EventEmitter } from 'events';
 import WebSocket, { WebSocketServer } from 'ws';
+import * as crypt from 'crypto';
 
-const fetch = require('node-fetch');
+//const fetch = require('node-fetch');
 const { resolve } = require('path');
 const readline = require('readline/promises');
 
 const readline_interface = readline.createInterface(process.stdin, process.stdout);
+
+enum ErrorCode {
+    None,
+    UnHandeld,
+    InvalidValue,
+    HTTPError,
+}
 
 const wss = new WebSocketServer({ host: '127.0.0.1', port: 7870 });
 let ws: WebSocket|null = null;
@@ -36,10 +44,14 @@ wss.on('connection', function connection(socket: WebSocket) {
     debug('connected ws server.\n');
     ws = socket;
     ws.on('error', console.error);
-    ws.on('message', (data) => handleSocketMessage(ws!, data));
+    ws.on('message', (data) => handleSocketMessage(data));
 });
 
-async function handleSocketMessage(ws: WebSocket, data: any): Promise<void> {
+/**
+ * Handles webui messages received from websocket.
+ * @param data raw message data
+ */
+async function handleSocketMessage(data: any): Promise<void> {
     const message: string = String(data);
     let type: string = message.split(' ')[0];
     if (type === undefined) type = message;
@@ -114,7 +126,11 @@ function wsLATEST(): void {
 /** Handles config changes from the webui */
 function wsCONFIG(data: string): void {
     const obj = JSON.parse(data);
-    const config_field = obj.name;
+
+    wAIfu.config = obj;
+    fs.writeFileSync('../config.json', data);
+
+    /*const config_field = obj.name;
     let new_value = obj.value;
 
     if (new_value === 'on') new_value = true;
@@ -122,8 +138,8 @@ function wsCONFIG(data: string): void {
 
     debug(`changed value of ${config_field} to: ${new_value}\n`);
 
-    modifyConfig(config_field, new_value);
-    handleCommand('!reload');
+    modifyConfig(config_field, new_value);*/
+    wAIfu.should_reload = true;
 }
 
 /**
@@ -132,22 +148,24 @@ function wsCONFIG(data: string): void {
  */
 function wsAUTH_GET(): void {
     ws!.send('AUTH ' + JSON.stringify({
-        "novel-mail": fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim(),
-        "novel-pass": fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim(),
-        "twitch-oauth": fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim(),
-        "playht-auth": fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim(),
-        "playht-user": fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim()
+        "novel-mail": getAuth('novel_user'),
+        "novel-pass": getAuth('novel_pass'),
+        "twitch-oauth": getAuth('twitch_oauth'),
+        "playht-auth": getAuth('play-ht_auth'),
+        "playht-user": getAuth('play-ht_user')
     }));
 }
 
 /** Handles changes to the auth informations from webui */
 function wsAUTH_SET(data: string): void {
     const obj = JSON.parse(data);
-    fs.writeFileSync('../UserData/auth/novel_user.txt', obj["novel-mail"]);
-    fs.writeFileSync('../UserData/auth/novel_pass.txt', obj["novel-pass"]);
-    fs.writeFileSync('../UserData/auth/twitch_oauth.txt', obj["twitch-oauth"]);
-    fs.writeFileSync('../UserData/auth/play-ht_auth.txt', obj["playht-auth"]);
-    fs.writeFileSync('../UserData/auth/play-ht_user.txt', obj["playht-user"]);
+
+    setAuth('novel_user', obj["novel-mail"]);
+    setAuth('novel_pass', obj["novel-pass"]);
+    setAuth('twitch_oauth', obj["twitch-oauth"]);
+    setAuth('play-ht_auth', obj["playht-auth"]);
+    setAuth('play-ht_user', obj["playht-user"]);
+    wAIfu.should_reload = true;
 }
 
 /** Handles changes to the character from the webui */
@@ -189,6 +207,8 @@ class Config {
     parrot_mode: boolean = false;
     /** Weither to read chat messages after input timeout */
     read_live_chat: boolean = false;
+    /** Weither to start ranting about topics of interest after input/chat timeout */
+    monologue: boolean = false;
     /** Weither to user Play.ht instead of NovelAI for the TTS */
     tts_use_playht: boolean = false;
     /** Name of the Twitch channel from which to read the chat messages */
@@ -211,6 +231,7 @@ class Character {
     char_persona: string = '';
     /** Longer dialogue used to give context and format */
     example_dialogue: string = '';
+    topics: string[] = [];
     craziness: number = 0.5;
     creativity: number = 0.5;
 }
@@ -247,12 +268,12 @@ class wAIfuApp {
     package: Package = new Package();
     character: Character = new Character();
     memory: Memory = new Memory();
-    /** Allows the emition and reception of custom events */
-    emitter: EventEmitter = new EventEmitter();
     /** Dictionnary of available audio devices */
     audio_devices: any = {};
-    /** */
+    /** Keeps track of number of reloads */
     init_cycle: number = 0;
+    /** Weither to reload on next input loop */
+    should_reload: boolean = false;
 }
 /** Singleton of the application's state */
 const wAIfu: wAIfuApp = new wAIfuApp();
@@ -284,9 +305,15 @@ async function main(): Promise<void> {
     await init();
 
     main_loop: while (true) {
+
         /** Input from the user (or twitch chat) */
         const inputObj = await getInput(wAIfu.input_mode);
         if (inputObj === null) continue main_loop;
+
+        if (wAIfu.should_reload === true) {
+            await handleCommand('!reload');
+            wAIfu.should_reload = false;
+        }
 
         const { input, sender, pseudo } = inputObj;
         const is_chat: boolean = sender === 'CHAT';
@@ -343,18 +370,16 @@ async function main(): Promise<void> {
                 "filtered": filtered_content
             }));
         }
-        /*wAIfu.emitter.emit('response', {
-            "text": displayed,
-            "filtered": filtered_content
-        });*/
 
-        /** new string to add to short-term memory */
-        const new_memory: string = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`;
+        if (filtered_content === null) {
+            /** new string to add to short-term memory */
+            const new_memory: string = `${identifier}: ${input}\n${wAIfu.character.char_name}:${response}`
 
-        wAIfu.memory.short_term.push(new_memory);
-        wAIfu.dialog_transcript += new_memory;
-        if (is_chat) /** Adds memory to chat user database, see ../UserData/data/chat_user_db.csv */
-            addChatMemory(pseudo, new_memory);
+            wAIfu.memory.short_term.push(new_memory);
+            wAIfu.dialog_transcript += new_memory;
+            if (is_chat) /** Adds memory to chat user database, see ../UserData/data/chat_user_db.csv */
+                addChatMemory(pseudo, new_memory);
+        }
 
         /** Speaks the response */
         await sendToTTS(displayed);
@@ -365,7 +390,7 @@ async function main(): Promise<void> {
 
 /** Loads the application at launch */
 async function init(): Promise<void> {
-    process.title = 'w-AI-fu';
+    process.title = 'w-AI-fu Console';
 
     wAIfu.package = getPackage();
     put(`w-AI-fu ${wAIfu.package.version}\n`);
@@ -422,13 +447,17 @@ async function reinit() {
     await summonProcesses(wAIfu.input_mode);
 }
 
-/** Returns a string from the current memory of the character */
+/**
+ * Returns a string from the current memory of the character
+ * @param additional memories to be placed between the long term and short term memories before flattening
+ * @returns {string} memories as a single multi-line string
+*/
 function flattenMemory(additional: string): string {
     // Remove old short-term memory
     // Prevents character dillution
     // Increase the right-hand number to allow for greater memory capacity
     // at the cost of answers less faithul to the character.
-    while (wAIfu.memory.short_term.length > 5) {
+    while (wAIfu.memory.short_term.length > 4) {
         wAIfu.memory.short_term.shift();
     }
     return wAIfu.memory.long_term
@@ -436,13 +465,16 @@ function flattenMemory(additional: string): string {
            + wAIfu.memory.short_term.join('');
 }
 
-/** Checks if auth files are empty */
+/**
+ * Checks if any auth files are empty
+ * @returns {boolean} true if passed check, false if failed.
+*/
 function isAuthCorrect(): boolean {
-    const USR = fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim();
-    const PSW = fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim();
-    const OAU = fs.readFileSync('../UserData/auth/twitch_oauth.txt').toString().trim();
-    const PTA = fs.readFileSync('../UserData/auth/play-ht_auth.txt').toString().trim();
-    const PTU = fs.readFileSync('../UserData/auth/play-ht_user.txt').toString().trim();
+    const USR = getAuth('novel_user');
+    const PSW = getAuth('novel_pass');
+    const OAU = getAuth('twitch_oauth');
+    const PTA = getAuth('play-ht_auth');
+    const PTU = getAuth('play-ht_user');
 
     if (USR === '') {
         put('Validation Error: NovelAI account mail adress is missing from UserData/auth/novel_user.txt\n');
@@ -467,7 +499,12 @@ function isAuthCorrect(): boolean {
     return true;
 }
 
-async function getInput(mode: InputMode): Promise<{input: string, sender: string, pseudo: string}|null> {
+/**
+ * Manages the reception of input, be it Text, Voice or from Twitch chat
+ * @param mode Can either be InputMode.Text or InputMode.Voice
+ * @returns null: if encountered a non-critical error, input: plain text content, sender: either '{{USER}}' or 'CHAT', pseudo: chatter's name
+ */
+async function getInput(mode: InputMode): Promise<{input:string,sender:string,pseudo:string}|null> {
     /** Keeps track of init_cycle at start of getInput() call,
      * we want to make sure that if the application restarts, the getInput()
      * function returns and does not continue.*/
@@ -532,6 +569,20 @@ async function getInput(mode: InputMode): Promise<{input: string, sender: string
     /** If is timeout, read twitch chat */
     if (result === null && wAIfu.live_chat) {
         const { message, name } = await getChatOrNothing();
+
+        /** got no new message, start ranting about a topic of interest */
+        if (wAIfu.config.monologue === true && message === '' && name === '') {
+            //if (Math.random() < 1/2) {
+                let rdm = Math.random();
+                let topic = wAIfu.character.topics[ Math.round((wAIfu.character.topics.length - 1) * rdm) ];
+                if (topic === undefined) {
+                    put('Critical Error: topic was undefined\n')
+                    closeProgram(1);
+                }
+                return { input: `!mono ${topic}`, sender: 'USER', pseudo: '' };
+            //}
+        }
+
         result = message;
         pseudo = name;
         sender = 'CHAT';
@@ -544,7 +595,10 @@ async function getInput(mode: InputMode): Promise<{input: string, sender: string
     return { input: result, sender, pseudo };
 }
 
-async function getChatOrNothing() {
+/**
+ * @returns a NEW chat message or empty message if no new message has been found
+ */
+async function getChatOrNothing(): Promise<{message:string,name:string}> {
     // If can't read chat messages
     if (wAIfu.live_chat === false) {
         return { message: '', name: '' };
@@ -587,8 +641,11 @@ function getCharacter() {
     return JSON.parse(buff.toString());
 }
 
-/** Loads and awaits loading of subprocesses */
-async function summonProcesses(mode: InputMode) {
+/**
+ * Loads and awaits loading of subprocesses
+ * @param mode either InputMode.Text or InputMode.Voice
+ */
+async function summonProcesses(mode: InputMode): Promise<void> {
     if (!LLM.running) await startLLM();
     if (!TTS.running) await startTTS();
 
@@ -619,8 +676,8 @@ async function summonProcesses(mode: InputMode) {
 async function startLLM() {
     if (LLM.running) return;
 
-    const USR = fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim();
-    const PSW = fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim();
+    const USR = getAuth('novel_user');
+    const PSW = getAuth('novel_pass');
 
     LLM.process = cproc.spawn('python', ['novel_llm.py'],
         { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
@@ -630,8 +687,8 @@ async function startLLM() {
 async function startTTS() {
     if (TTS.running) return;
 
-    const USR = fs.readFileSync('../UserData/auth/novel_user.txt').toString().trim();
-    const PSW = fs.readFileSync('../UserData/auth/novel_pass.txt').toString().trim();
+    const USR = (wAIfu.config.tts_use_playht) ? getAuth('play-ht_user') : getAuth('novel_user');
+    const PSW = (wAIfu.config.tts_use_playht) ? getAuth('play-ht_auth') : getAuth('novel_pass');
 
     const tts_provider = (wAIfu.config.tts_use_playht) ? 'playht_tts.py' : 'novel_tts.py';
 
@@ -643,7 +700,9 @@ async function startTTS() {
 async function startLiveChat() {
     if (CHAT.running) return;
 
-    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', detached: DEBUGMODE, shell: DEBUGMODE });
+    const OAUTH = getAuth('twitch_oauth');
+
+    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH }, detached: DEBUGMODE, shell: DEBUGMODE });
     CHAT.running = true;
 }
 
@@ -654,7 +713,10 @@ async function startSTT() {
     STT.running = true;
 }
 
-/** Send dialog history + prompt to LLM */
+/**
+ * Send dialog history + prompt to LLM
+ * @param prompt final prompt to be read by the LLM, contains character definition, example dialogue, memories.
+ */
 async function sendToLLM(prompt: string): Promise<string> {
 
     const payload = JSON.stringify({ data: [prompt, wAIfu.character.craziness, wAIfu.character.creativity] });
@@ -664,8 +726,18 @@ async function sendToLLM(prompt: string): Promise<string> {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: payload
+    }).catch((e: any) => {
+        put('Error: Could not contact the LLM subprocess.\n');
+        console.log(e);
+        closeProgram(ErrorCode.HTTPError);
     });
-    const data = await post_query.json();
+    const text = await post_query!.text();
+    if (text[0] !== undefined && text[0] !== '{') {
+        put('Error: Received incorrect json from LLM.\n');
+        console.log(text);
+        closeProgram(ErrorCode.InvalidValue);
+    }
+    const data = JSON.parse(text);
     const raw = Buffer.from(data.data[0], 'base64');
 
     debug('received: ' + JSON.stringify(
@@ -680,14 +752,17 @@ async function sendToLLM(prompt: string): Promise<string> {
     return response;
 }
 
-/** Logic for command handling, if not a command will return original argument, chat messages should by no mean be routed through this! */
+/**
+ * Logic for command handling, if not a command will return original argument, chat messages should by no mean be routed through this!
+ * @param command user input, either plain text or command (starts with '!')
+ * @returns string if input is plain text, null if input has been consumed as a command.
+*/
 async function handleCommand(command: string): Promise<string|null> {
+    /** Parrot mode implementation */
     if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
         if (wAIfu.input_mode === InputMode.Voice) put(command + '\n');
-        wAIfu.emitter.emit('response', {
-            "text": command,
-            "filtered": null
-        });
+        ws!.send(`MSG_IN ${command}`);
+        ws!.send(`MSG_OUT ${JSON.stringify({ "text": command, "filtered": null })}`);
         command = '!say ' + command;
     }
 
@@ -759,7 +834,7 @@ async function handleCommand(command: string): Promise<string|null> {
         }
         case '!reload': {
             /** Reinitializes the application */
-            closeSubProcesses();
+            await closeSubProcesses();
             await reinit();
             return null;
         }
@@ -808,6 +883,12 @@ async function handleCommand(command: string): Promise<string|null> {
             console.log(wAIfu);
             return null;
         }
+        case '!mono': {
+            const topic = command.substring('!mono '.length, undefined).trim();
+            put(`[ ${wAIfu.character.char_name} starts talking about ${topic}. ]\n`)
+            await monologue(topic);
+            return null;
+        }
         default:
             /** What are you doing here ??? */
             put('Invalid command.\n');
@@ -815,12 +896,20 @@ async function handleCommand(command: string): Promise<string|null> {
     }
 }
 
-/** Removes any potentially harmful characters, keeps standard alphabet, punctuation and numbers */
+/**
+ * Removes any potentially harmful characters, keeps standard alphabet, punctuation and numbers
+ * @param text unsanitized text
+ * @returns safe, warm, sanitized text
+ */
 function sanitizeText(text: string): string {
     return text.replaceAll(/[^a-zA-Z .,?!1-9]/g, '');
 }
 
-/** Checks for bad words inside of response text */
+/**
+ * Checks for bad words inside of response text
+ * @param text content to be verified
+ * @returns true if found instance of bad word, false if passed
+ */
 function verifyText(text: string): boolean {
     const low_text = text.toLowerCase();
     for (const bw of wAIfu.bad_words) {
@@ -832,7 +921,10 @@ function verifyText(text: string): boolean {
     return false;
 }
 
-// Sends LLM output to the TTS generator.
+/**
+ * Sends LLM output to the TTS generator
+ * @param say text spoken by the TTS
+ */
 async function sendToTTS(say: string): Promise<void> {
     let default_voice = (wAIfu.config.tts_use_playht === true)
         ? 'Scarlett'
@@ -851,20 +943,43 @@ async function sendToTTS(say: string): Promise<void> {
             "Content-Type": "application/json"
         },
         body: payload
+    }).catch((e: any) => {
+        put('Error: Could not contact the TTS subprocess.\n');
+        console.log(e);
+        closeProgram(ErrorCode.HTTPError);
     });
-    const data = await post_query.json();
+    const text = await post_query!.text();
+    if (text[0] !== undefined && text[0] !== '{') {
+        put('Error: Received incorrect json from TTS.\n');
+        console.log(text);
+        closeProgram(ErrorCode.InvalidValue);
+    }
+    const data = JSON.parse(text);
     debug('received: ' + JSON.stringify(data) + '\n');
 
     /** If audio device is not capable of being used as ouput */
     if (data["message"] === 'AUDIO_ERROR') {
         put('Error: Could not play TTS because of invalid output audio device.\n');
     }
+    if (data["message"] === 'GENERATION_ERROR') {
+        put('Error: Could not play TTS because of an error with the NovelAI API.\n');
+    }
 }
 
 /** Retreives the last message from the twich chat, see ./twitch/twitchchat.py */
 async function getLastTwitchChat(): Promise<any> {
-    const get_query = await fetch(CHAT.api_url + '/api');
-    const data = await get_query.json();
+    const get_query = await fetch(CHAT.api_url + '/api').catch((e: any) => {
+        put('Error: Could not contact the CHAT subprocess.\n');
+        console.log(e);
+        closeProgram(ErrorCode.HTTPError);
+    });
+    const text = await get_query!.text();
+    if (text[0] !== undefined && text[0] !== '{') {
+        put('Error: Received incorrect json from CHAT.\n');
+        console.log(text);
+        closeProgram(ErrorCode.InvalidValue);
+    }
+    const data = JSON.parse(text);
     debug('received: ' + JSON.stringify(data) + '\n');
     return data;
 }
@@ -878,7 +993,10 @@ function init_get(): void {
     readline_interface.on('line', e);
 }
 
-// Async input.
+/**
+ * Get Text input from user, with timeout if enabled in config
+ * @returns null if timeout or skip, string if success 
+ */
 function textGet(): Promise<string|null> {
     debug('Awaiting text input ...\n');
     return new Promise<string|null>(
@@ -901,15 +1019,15 @@ function textGet(): Promise<string|null> {
             const checkQueue = () => {
                 if (resolved) return;
 
-                if (wAIfu.command_queue.length > 0) {
+                if (wAIfu.init_cycle !== old_init_cycle) {
+                    resolved = true;
+                    resolve(null);
+                } else if (wAIfu.command_queue.length > 0) {
                     debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
                     text = wAIfu.command_queue.shift()!;
                     if (text === undefined) text = null;
                     resolved = true;
                     resolve(text);
-                } else if (wAIfu.init_cycle !== old_init_cycle) {
-                    resolved = true;
-                    resolve(null);
                 } else {
                     setTimeout(checkQueue, 250);
                 }
@@ -919,6 +1037,10 @@ function textGet(): Promise<string|null> {
     );
 }
 
+/**
+ * Get Voice input from user, with timeout if enabled in config
+ * @returns null if timeout or skip, string if success 
+ */
 function voiceGet(): Promise<string|null> {
     return new Promise<string|null>(
         (resolve) => {
@@ -938,7 +1060,10 @@ function voiceGet(): Promise<string|null> {
             const checkFile = () => {
                 if (resolved) return;
 
-                if (fs.existsSync('./speech/input.txt')) {
+                if (wAIfu.init_cycle !== old_init_cycle) {
+                    resolved = true;
+                    resolve(null);
+                } else if (fs.existsSync('./speech/input.txt')) {
                     text = fs.readFileSync('./speech/input.txt').toString('utf8');
                     fs.unlinkSync('./speech/input.txt');
                     resolved = true;
@@ -949,9 +1074,6 @@ function voiceGet(): Promise<string|null> {
                     if (text === undefined) text = null;
                     resolved = true;
                     resolve(text);
-                } else if (wAIfu.init_cycle !== old_init_cycle) {
-                    resolved = true;
-                    resolve(null);
                 } else {
                     setTimeout(checkFile, 250);
                 }
@@ -961,46 +1083,108 @@ function voiceGet(): Promise<string|null> {
     );
 }
 
-function closeSubProcesses(): void {
-    //return;
-    put('Killing subprocesses ...\n');
-    killProc(CHAT, 'CHAT');
-    killProc(LLM, 'LLM');
-    killProc(TTS, 'TTS');
-    killProc(STT, 'STT');
-}
-
-function killProc(proc: SubProc, proc_name: string): void {
-    if (proc.process !== null && proc.running) {
-        proc.process.on('close', () => put(`Closed ${proc_name}.\n`));
-        let success = proc.process.kill(2);
-        if (!success)
-            put(`Error: Could not kill process ${proc_name}.\n`);
-        else
-            proc.running = false;
+/**
+ * Makes the character start talking about a certain topic (typically picked from its topics of interest)
+ * @param topic topic the character's rant should be about
+ */
+async function monologue(topic: string): Promise<void> {
+    const prompt = `[${wAIfu.character.char_name} starts talking about ${topic}]\n${wAIfu.character.char_name}:`;
+    let displayed = '';
+    let filtered_txt: string|null = null
+    const response: string = await sendToLLM(flattenMemory('') + prompt);
+    displayed = response;
+    if (verifyText(response) === true) {
+        filtered_txt = response;
+        displayed = ' Filtered.\n';
     }
+    put(`${wAIfu.character.char_name}:${displayed}`);
+    exposeCaptions(displayed);
+    if (ws !== null && ws.readyState === ws.OPEN) {
+        ws!.send('MSG_OUT ' + JSON.stringify({ "text": displayed, "filtered": filtered_txt }));
+    }
+    if (filtered_txt === null) {
+        const new_memory: string = `${prompt}${displayed}`;
+        wAIfu.memory.short_term.push(new_memory);
+        wAIfu.dialog_transcript += new_memory;
+    }
+    await sendToTTS(displayed);
+    exposeCaptions('');
 }
 
-function closeProgram(code: number): void {
+async function closeSubProcesses(): Promise<void> {
+    /** This is a massacre 😱 */
+    put('Killing subprocesses ...\n');
+    await killProc(CHAT, 'CHAT');
+    await killProc(LLM, 'LLM');
+    await killProc(TTS, 'TTS');
+    await killProc(STT, 'STT');
+}
+
+/**
+ * Fully close subprocess
+ * @param proc subprocess to close
+ * @param proc_name name of the subprocess, for logging purposes
+ */
+function killProc(proc: SubProc, proc_name: string): Promise<void> {
+    return new Promise<void>((resolve) => {
+        if (proc.process !== null && proc.running) {
+            proc.process.on('close', () => {
+                put(`Closed ${proc_name}.\n`);
+                proc.process = null;
+                resolve();
+            });
+            let success = proc.process.kill(2);
+            if (!success)
+                put(`Error: Could not kill process ${proc_name}.\n`);
+            else
+                proc.running = false;
+        } else {
+            resolve();
+        }
+    });
+}
+
+/**
+ * End the program
+ * @param code error code
+ * @returns your freedom
+ */
+function closeProgram(code: number = 0): void {
     closeSubProcesses();
     put('Exiting w.AI.fu\n');
     process.exit(code);
 }
 
+/**
+ * Similar in function to C's puts(), lines must be explicitly terminated with \n
+ * @param text text to display in the console
+ */
 function put(text: string): void {
     process.stdout.write(text);
 }
 
+/**
+ * Similar to put(), but only works if is in debug mode
+ * @param text text to display in the console
+ */
 function debug(text: string): void {
     if (wAIfu.is_debug || DEBUGMODE)
         process.stdout.write('\x1B[1;30m' + text + '\x1B[0m');
 }
 
+/**
+ * Write the text to the './captions/transcript.txt' file.
+ * @param text text to write to file
+ */
 function exposeCaptions(text: string): void {
     fs.writeFileSync('./captions/transcript.txt', text);
 }
 
-/** Returns a string from the chat user's memories if present in database */
+/**
+ * Returns a string from the chat user's memories if present in database
+ * @param user name of the chatter
+ * @returns a multi-line string containing the memories of the user
+ */
 function getChatMemories(user: string): string {
 
     const db: Map<string,string[]> = fetchChatDatabase();
@@ -1068,7 +1252,7 @@ function parseChatDatabase(csv: string): Map<string,string[]> {
     return csv_map;
 }
 
-/** Stringifies the Map before writing ti CSV file */
+/** Stringifies the Map before writing to CSV file */
 function flattenChatDatabase(obj: Map<string,string[]>): string {
     let flat: string = '';
     for (let [key, value] of obj) {
@@ -1095,7 +1279,13 @@ function retreiveCharacters(): string[] {
     return result;
 }
 
-function modifyConfig(field: string, value: any) {
+function modifyConfig(field: string, value: any): void {
+    if (value === null || value === undefined) {
+        throw new Error('Tried assigning invalid value to config field: ' + field);
+    }
+    if ((wAIfu.config as any)[field] === undefined) {
+        throw new Error('Tried assigning value to inecistant config field: ' + field);
+    }
     (wAIfu.config as any)[field] = value;
     fs.writeFileSync('../config.json', JSON.stringify(wAIfu.config));
 }
@@ -1130,27 +1320,27 @@ function getDevices(): void {
     wAIfu.audio_devices = JSON.parse(data.toString('utf8'));
 }
 
-/*function awaitDevicesResponse(): Promise<void> {
-    return new Promise<void>(
-        (resolve) => {
-            cproc.spawnSync('python', ['audio_devices.py'], { cwd: './devices' });
-            let received = false;
-            const checkreceived = () => {
-                if (received) return;
-                if (Object.keys(wAIfu.audio_devices).length === 0) {
-                    setTimeout(checkreceived, 250);
-                } else {
-                    received = true;
-                    resolve();
-                    return;
-                }
-            };
-            setTimeout(checkreceived, 500);
-        }
-    )
-}*/
+function getAuth(what: 'novel_user'|'novel_pass'|'twitch_oauth'|'play-ht_auth'|'play-ht_user'): string {
+    return basic_decode(fs.readFileSync(`../UserData/auth/${what}.txt`));
+}
 
-//#region LICENSE
+function setAuth(what: 'novel_user'|'novel_pass'|'twitch_oauth'|'play-ht_auth'|'play-ht_user', data: string): void {
+    fs.writeFileSync(`../UserData/auth/${what}.txt`, basic_encode(data));
+}
+
+/** Not crypto secure, but enough for local */
+function basic_encode(data: string): string {
+    let b64 = Buffer.from(data, 'utf8').toString('base64');
+    let hex = Buffer.from(b64, 'base64').toString('hex');
+    return hex;
+}
+
+function basic_decode(data: Buffer): string {
+    let b64 = Buffer.from(data.toString(), 'hex').toString('base64');
+    return Buffer.from(b64, 'base64').toString('utf8');
+}
+
+//#region GPL3_LICENSE
 /** This work is under the GPLv3 License.
 
                     GNU GENERAL PUBLIC LICENSE

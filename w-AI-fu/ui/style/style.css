@@ -447,6 +447,34 @@ CharacterDownloadButton:hover {
     background-color: rgb(50, 60, 70);
 }
 
+ConfigSaveButton {
+    cursor: pointer;
+    display: inline-block;
+    border: solid 1px rgb(50, 60, 70);
+    padding: .75rem;
+    border-radius: 1rem;
+    margin-right: .75rem;
+    margin-top: 1rem;
+}
+
+ConfigSaveButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
+AuthSaveButton {
+    cursor: pointer;
+    display: inline-block;
+    border: solid 1px rgb(50, 60, 70);
+    padding: .75rem;
+    border-radius: 1rem;
+    margin-right: .75rem;
+    margin-top: 1rem;
+}
+
+AuthSaveButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
 AuthBanner {
     display: flex;
     flex-direction: row;
@@ -492,6 +520,7 @@ RangeLine > Label {
 }
 
 .BigRedButton {
+    color: white;
     background-color: rgb(155, 62, 104);
     border-color: rgb(155, 62, 104);
 }
