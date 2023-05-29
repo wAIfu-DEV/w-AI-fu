@@ -12,9 +12,15 @@ from novelai_api.Tokenizer import Tokenizer
 from novelai_api.utils import b64_to_tokens
 
 
+import logging
+
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
+
+log = logging.getLogger('werkzeug')
+log.disabled = True
+app.logger.disabled = True
 
 bad_words: BanList = BanList(':', ' :', '::', ' ::', '*:', ';', ' ;', ';;', ' ;;', '#', ' #', '|', ' |', '{', ' {', '}', ' }', '[', ' [', ']', ' ]', '\\', ' \\', '/', ' /', '*', ' *', '~', ' ~', 'bye', ' bye', 'Bye', ' Bye', 'goodbye', ' goodbye', 'Goodbye', ' Goodbye', 'goodbye', ' goodnight', 'Goodnight', ' Goodnight', 'www', ' www', 'http', ' http', 'https', ' https', '.com', '.org', '.net')
 

@@ -13,9 +13,15 @@ from os import path
 from pydub import AudioSegment
 from flask import Flask, request, jsonify
 
+import logging
+
 app = Flask(__name__)
 audio = pyaudio.PyAudio()
 device_index = 0
+
+log = logging.getLogger('werkzeug')
+log.disabled = True
+app.logger.disabled = True
 
 interrupt_next = False
 

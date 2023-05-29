@@ -1,3 +1,5 @@
+/** Expose additional logs + show python shells */
+const DEBUGMODE: boolean = false;
 /*
     File: app.ts
 
@@ -17,9 +19,6 @@
     License: GPLv3 see ../LICENSE.txt and end of file.
 */
 
-/** Expose additional logs + show python shells */
-const DEBUGMODE: boolean = false;
-
 import * as fs from 'fs';
 import * as cproc from 'child_process';
 import WebSocket, { WebSocketServer } from 'ws';
@@ -27,10 +26,13 @@ import extract from 'extract-zip';
 import * as readline from 'readline/promises';
 import * as path from 'path';
 
-//const { resolve } = require('path');
-//const readline = require('readline/promises');
-
 const readline_interface = readline.createInterface(process.stdin, process.stdout);
+
+const HOST_PATH: string = '127.0.0.1';
+const PORT_WSS: number = 7870;
+const PORT_LLM: number = 7840;
+const PORT_TTS: number = 7850;
+const PORT_CHAT: number = 7830;
 
 enum ErrorCode {
     None,
@@ -40,9 +42,10 @@ enum ErrorCode {
     Critical,
 }
 
-const wss = new WebSocketServer({ host: '127.0.0.1', port: 7870 });
+const wss: WebSocket.Server = new WebSocketServer({ host: HOST_PATH, port: PORT_WSS });
 let ws: WebSocket|null = null;
-wss.on('connection', function connection(socket: WebSocket) {
+
+wss.on('connection', (socket: WebSocket) => {
     debug('connected ws server.\n');
     ws = socket;
     ws.on('error', console.error);
@@ -57,44 +60,36 @@ async function handleSocketMessage(data: any): Promise<void> {
     const message: string = String(data);
     let type: string = message.split(' ')[0];
     if (type === undefined) type = message;
-    const payload: string = (type.length === message.length)
-                            ? ''
-                            : message.substring(type.length + 1, undefined);
+    const payload: string = (type.length !== message.length)
+                            ? message.substring(type.length + 1, undefined)
+                            : '';
     
     debug(`ws received: ${message}\n`);
     switch (type) {
-        case 'MSG': {
+        case 'MSG': 
             wsMSG(payload);
             return;
-        }
-        case 'AUTH_GET': {
+        case 'AUTH_GET':
             wsAUTH_GET();
             return;
-        }
-        case 'AUTH_SET': {
+        case 'AUTH_SET':
             wsAUTH_SET(payload);
             return;
-        }
-        case 'LATEST': {
+        case 'LATEST':
             wsLATEST();
             return;
-        }
-        case 'CONFIG': {
+        case 'CONFIG':
             wsCONFIG(payload);
             return;
-        }
-        case 'CHARA': {
+        case 'CHARA':
             wsCHARA(payload);
             return;
-        }
-        case 'DEVICE': {
+        case 'DEVICE':
             wsDEVICE(payload);
             return;
-        }
-        case 'INTERRUPT': {
+        case 'INTERRUPT':
             wsINTERRUPT();
             return;
-        }
         default:
             return;
     };
@@ -132,15 +127,6 @@ function wsCONFIG(data: string): void {
     wAIfu.config = obj;
     fs.writeFileSync('../config.json', data);
 
-    /*const config_field = obj.name;
-    let new_value = obj.value;
-
-    if (new_value === 'on') new_value = true;
-    if (new_value === 'off') new_value = false;
-
-    debug(`changed value of ${config_field} to: ${new_value}\n`);
-
-    modifyConfig(config_field, new_value);*/
     wAIfu.should_reload = true;
 }
 
@@ -292,11 +278,11 @@ class SubProc {
 }
 
 /** Subprocess responsible for the NovelAI LLM, see ./novel/novel_llm.py */
-const LLM: SubProc =  new SubProc('http://127.0.0.1:7840');
+const LLM: SubProc =  new SubProc(`http://${HOST_PATH}:${PORT_LLM}`);
 /** Subprocess responsible for the NovelAI TTS, see ./novel/novel_tts.py */
-const TTS: SubProc =  new SubProc('http://127.0.0.1:7850');
+const TTS: SubProc =  new SubProc(`http://${HOST_PATH}:${PORT_TTS}`);
 /** Subprocess responsible for the Twitch Chat Reading, see ./novel/novel_tts.py */
-const CHAT: SubProc = new SubProc('http://127.0.0.1:7830');
+const CHAT: SubProc = new SubProc(`http://${HOST_PATH}:${PORT_CHAT}`);
 /** Subprocess responsible for the Speech recognition, see ./novel/novel_tts.py */
 const STT: SubProc =  new SubProc('');
 
@@ -304,14 +290,10 @@ main();
 /** Entry point, main I/O loop */
 async function main(): Promise<void> {
 
-
-    //await update();
-
     /** Fetches the required data and initializes the subprocesses */
     await init();
 
     main_loop: while (true) {
-
         /** Input from the user (or twitch chat) */
         const inputObj = await getInput(wAIfu.input_mode);
         if (inputObj === null) continue main_loop;
@@ -556,7 +538,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
     *    thing from the python script. */
     if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
         if (wAIfu.config.twitch_channel_name === '') {
-            put('Critical Error: Could not initialize the Twitch Chat Reader as the provided twitch channel name is empty.\n');
+            errPut('Critical Error: Could not initialize the Twitch Chat Reader as the provided twitch channel name is empty.\n');
             closeProgram(ErrorCode.InvalidValue);
         }
         debug('initializing Twitch Chat Reader.\n');
@@ -586,7 +568,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
                 let rdm = Math.random();
                 let topic = wAIfu.character.topics[ Math.round((wAIfu.character.topics.length - 1) * rdm) ];
                 if (topic === undefined) {
-                    put('Critical Error: topic was undefined\n')
+                    errPut('Critical Error: topic was undefined\n')
                     closeProgram(1);
                 }
                 return { input: `!mono ${topic}`, sender: 'USER', pseudo: '' };
@@ -599,7 +581,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
     }
     /** User input is still null, not supposed to happen */
     if (result === null) {
-        put('Critical error: input is invalid.\n');
+        errPut('Critical error: input is invalid.\n');
         closeProgram(1); process.exit(1);
     }
     return { input: result, sender, pseudo };
@@ -670,15 +652,15 @@ async function summonProcesses(mode: InputMode): Promise<void> {
         if (!CHAT.running) await startLiveChat();
     }
 
-    await awaitProcessLoaded(LLM);
+    await awaitProcessLoaded(LLM, 'LLM');
     put('Loaded LLM.\n');
-    await awaitProcessLoaded(TTS);
+    await awaitProcessLoaded(TTS, 'TTS');
     put('Loaded TTS.\n');
     if (mode === InputMode.Voice) {
         put('Loaded STT.\n');
     }
     if (wAIfu.live_chat) {
-        await awaitProcessLoaded(CHAT);
+        await awaitProcessLoaded(CHAT, 'CHAT');
         put('Loaded CHAT.\n');
     }
 }
@@ -691,6 +673,16 @@ async function startLLM() {
 
     LLM.process = cproc.spawn('python', ['novel_llm.py'],
         { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
+    
+    LLM.process.stdout?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python LLM:\n\x1B[1;30m${data.toString()}\x1B[0m`);
+    });
+    LLM.process.stderr?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python LLM:\n\x1B[0;31m${data.toString()}\x1B[0m`);
+    });
+
     LLM.running = true;
 }
 
@@ -704,6 +696,16 @@ async function startTTS() {
 
     TTS.process = cproc.spawn('python', [tts_provider],
         { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
+    
+    TTS.process.stdout?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python TTS:\n\x1B[1;30m${data.toString()}\x1B[0m`);
+    });
+    TTS.process.stderr?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python TTS:\n\x1B[0;31m${data.toString()}\x1B[0m`);
+    });
+    
     TTS.running = true;
 }
 
@@ -713,6 +715,16 @@ async function startLiveChat() {
     const OAUTH = getAuth('twitch_oauth');
 
     CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH }, detached: DEBUGMODE, shell: DEBUGMODE });
+    
+    CHAT.process.stdout?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python CHAT:\n\x1B[1;30m${data.toString()}\x1B[0m`);
+    });
+    CHAT.process.stderr?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python CHAT:\n\x1B[0;31m${data.toString()}\x1B[0m`);
+    });
+    
     CHAT.running = true;
 }
 
@@ -737,13 +749,13 @@ async function sendToLLM(prompt: string): Promise<string> {
         headers: { "Content-Type": "application/json" },
         body: payload
     }).catch((e: any) => {
-        put('Error: Could not contact the LLM subprocess.\n');
+        errPut('Critical Error: Could not contact the LLM subprocess.\n');
         console.log(e);
         closeProgram(ErrorCode.HTTPError);
     });
     const text = await post_query!.text();
     if (text[0] !== undefined && text[0] !== '{') {
-        put('Error: Received incorrect json from LLM.\n');
+        errPut('Critical Error: Received incorrect json from LLM.\n');
         console.log(text);
         closeProgram(ErrorCode.InvalidValue);
     }
@@ -833,7 +845,7 @@ async function handleCommand(command: string): Promise<string|null> {
             const fpath = command.substring('!script '.length, undefined).trim();
             const fpath_resolved = `../UserData/scripts/${fpath}`;
             if (!fs.existsSync(fpath_resolved)) {
-                put(`Error: Cannot open file ${fpath_resolved}\n`);
+                warnPut(`Error: Cannot open file ${fpath_resolved}\n`);
                 return null;
             }
             let fcontent = fs.readFileSync(fpath_resolved).toString();
@@ -954,13 +966,13 @@ async function sendToTTS(say: string): Promise<void> {
         },
         body: payload
     }).catch((e: any) => {
-        put('Error: Could not contact the TTS subprocess.\n');
+        errPut('Critical Error: Could not contact the TTS subprocess.\n');
         console.log(e);
         closeProgram(ErrorCode.HTTPError);
     });
     const text = await post_query!.text();
     if (text[0] !== undefined && text[0] !== '{') {
-        put('Error: Received incorrect json from TTS.\n');
+        errPut('Critical Error: Received incorrect json from TTS.\n');
         console.log(text);
         closeProgram(ErrorCode.InvalidValue);
     }
@@ -969,23 +981,23 @@ async function sendToTTS(say: string): Promise<void> {
 
     /** If audio device is not capable of being used as ouput */
     if (data["message"] === 'AUDIO_ERROR') {
-        put('Error: Could not play TTS because of invalid output audio device.\n');
+        warnPut('Error: Could not play TTS because of invalid output audio device.\n');
     }
     if (data["message"] === 'GENERATION_ERROR') {
-        put('Error: Could not play TTS because of an error with the NovelAI API.\n');
+        warnPut('Error: Could not play TTS because of an error with the NovelAI API.\n');
     }
 }
 
 /** Retreives the last message from the twich chat, see ./twitch/twitchchat.py */
 async function getLastTwitchChat(): Promise<any> {
     const get_query = await fetch(CHAT.api_url + '/api').catch((e: any) => {
-        put('Error: Could not contact the CHAT subprocess.\n');
+        errPut('Critical Error: Could not contact the CHAT subprocess.\n');
         console.log(e);
         closeProgram(ErrorCode.HTTPError);
     });
     const text = await get_query!.text();
     if (text[0] !== undefined && text[0] !== '{') {
-        put('Error: Received incorrect json from CHAT.\n');
+        errPut('Critical Error: Received incorrect json from CHAT.\n');
         console.log(text);
         closeProgram(ErrorCode.InvalidValue);
     }
@@ -1145,7 +1157,7 @@ function killProc(proc: SubProc, proc_name: string): Promise<void> {
             });
             let success = proc.process.kill(2);
             if (!success)
-                put(`Error: Could not kill process ${proc_name}.\n`);
+                warnPut(`Error: Could not kill process ${proc_name}.\n`);
             else
                 proc.running = false;
         } else {
@@ -1171,6 +1183,14 @@ function closeProgram(code: ErrorCode|number = ErrorCode.None): void {
  */
 function put(text: string): void {
     process.stdout.write(text);
+}
+
+function warnPut(text: string): void {
+    process.stdout.write('\x1B[0;33m' + text + '\x1B[0m');
+}
+
+function errPut(text: string): void {
+    process.stdout.write('\x1B[0;31m' + text + '\x1B[0m');
 }
 
 /**
@@ -1254,7 +1274,7 @@ function parseChatDatabase(csv: string): Map<string,string[]> {
         let spl: string[] = lines[i].split(',');
 
         if (spl.length !== 5) {
-            put(`Critical Error: Incorrect formating of chat_user_db.csv file at line ${i}. Expected line length of 5, got ${spl.length}\n`);
+            errPut(`Critical Error: Incorrect formating of chat_user_db.csv file at line ${i}. Expected line length of 5, got ${spl.length}\n`);
             closeProgram(1);
         }
         csv_map.set(spl[0], [ spl[1], spl[2], spl[3], spl[4] ]);
@@ -1301,10 +1321,20 @@ function modifyConfig(field: string, value: any): void {
 }
 
 /** Waits for the process to be responsive */
-function awaitProcessLoaded(proc: SubProc): Promise<void> {
+function awaitProcessLoaded(proc: SubProc, proc_name: string): Promise<void> {
     return new Promise<void>(
         (resolve) => {
             let loaded = false;
+
+            const timeout = () => {
+                if (loaded) return;
+                else {
+                    errPut(`Critical Error: Could not contact ${proc_name} python script after 10s\n`);
+                    closeProgram(ErrorCode.Critical);
+                    return;
+                }
+            };
+
             const checkloaded = async () => {
                 if (loaded) return;
                 try {
@@ -1317,6 +1347,7 @@ function awaitProcessLoaded(proc: SubProc): Promise<void> {
                 }             
             };
             setTimeout(checkloaded, 500);
+            setTimeout(timeout, 10 * 1_000);
         }
     )
 }
@@ -1355,7 +1386,7 @@ async function unzip(zip_file_path: string, to_directory: string): Promise<boole
         await extract(path.resolve(zip_file_path), { dir: path.resolve(to_directory) });
         return true;
     } catch(e) {
-        put(`Error: Could not unzip file ${zip_file_path} to directory ${to_directory}\n`);
+        warnPut(`Error: Could not unzip file ${zip_file_path} to directory ${to_directory}\n`);
         console.log(e);
         return false;
     }
@@ -1377,17 +1408,17 @@ async function shouldUpdate(): Promise<boolean> {
     try {
         query = await fetch('https://api.github.com/repos/wAIfu-DEV/w-AI-fu/tags');
     } catch(e) {
-        put('Error: Could not contact github while trying to get latest version.\n');
+        warnPut('Error: Could not contact github while trying to get latest version.\n');
         return false;
     }
 
     const data = await query.json().catch((e) => {
-        put('Error: Could not retreive latest version from github.\n');
+        warnPut('Error: Could not retreive latest version from github.\n');
         return false;
     });
 
     if (data[0] === undefined || data[0]["name"] === undefined) {
-        put('Error: Fetched invalid data from github while trying to retreive latest version.\n');
+        warnPut('Error: Fetched invalid data from github while trying to retreive latest version.\n');
         return false;
     }
 
@@ -1407,7 +1438,7 @@ async function update(): Promise<boolean> {
     try {
         query = await fetch('https://github.com/wAIfu-DEV/w-AI-fu/releases/latest/download/w-AI-fu.zip');
     } catch(e) {
-        put('Error: Could not contact github while trying to download w-AI-fu.\n');
+        warnPut('Error: Could not contact github while trying to download w-AI-fu.\n');
         return false;
     }
     printProgress(0.1);
@@ -1415,7 +1446,7 @@ async function update(): Promise<boolean> {
     try {
         arbuff = await query.arrayBuffer();
     } catch(e) {
-        put('Error: Could not read received data from github while trying to download w-AI-fu.\n');
+        warnPut('Error: Could not read received data from github while trying to download w-AI-fu.\n');
         return false;
     }
     printProgress(0.2);
@@ -1447,7 +1478,7 @@ async function update(): Promise<boolean> {
             }
         });
     } catch(e) {
-        put('Critical Error: Could not remove some files while updating, total reinstallation might be required. User data such as characters and scripts will be present in the TEMP directory.\n');
+        errPut('Critical Error: Could not remove some files while updating, total reinstallation might be required. User data such as characters and scripts will be present in the TEMP directory.\n');
         closeProgram(ErrorCode.Critical);
         return false;
     }
@@ -1456,7 +1487,7 @@ async function update(): Promise<boolean> {
     await unzip('./temp.zip', './');
 
     if (fs.existsSync('./w-AI-fu main') === false) {
-        put('Critical Error: Failed to extract the downloaded files, total reinstallation is required. User data such as characters and scripts will be present in the TEMP directory.\n');
+        errPut('Critical Error: Failed to extract the downloaded files, total reinstallation is required. User data such as characters and scripts will be present in the TEMP directory.\n');
         closeProgram(ErrorCode.Critical);
         return false;
     }

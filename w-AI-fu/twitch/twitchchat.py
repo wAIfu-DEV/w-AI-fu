@@ -2,6 +2,8 @@ import websocket
 import re
 import os
 
+import logging
+
 from flask import Flask, jsonify, request
 
 app = Flask(__name__)
@@ -9,6 +11,10 @@ started = False
 last_usr = ''
 last_msg = ''
 channel = ''
+
+log = logging.getLogger('werkzeug')
+log.disabled = True
+app.logger.disabled = True
 
 @app.route('/loaded', methods=['GET'])
 async def loaded():
