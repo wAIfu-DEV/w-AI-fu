@@ -23,11 +23,12 @@ const DEBUGMODE: boolean = false;
 import * as fs from 'fs';
 import * as cproc from 'child_process';
 import WebSocket, { WebSocketServer } from 'ws';
-import * as crypt from 'crypto';
+import extract from 'extract-zip';
+import * as readline from 'readline/promises';
+import * as path from 'path';
 
-//const fetch = require('node-fetch');
-const { resolve } = require('path');
-const readline = require('readline/promises');
+//const { resolve } = require('path');
+//const readline = require('readline/promises');
 
 const readline_interface = readline.createInterface(process.stdin, process.stdout);
 
@@ -36,6 +37,7 @@ enum ErrorCode {
     UnHandeld,
     InvalidValue,
     HTTPError,
+    Critical,
 }
 
 const wss = new WebSocketServer({ host: '127.0.0.1', port: 7870 });
@@ -301,6 +303,10 @@ const STT: SubProc =  new SubProc('');
 main();
 /** Entry point, main I/O loop */
 async function main(): Promise<void> {
+
+
+    //await update();
+
     /** Fetches the required data and initializes the subprocesses */
     await init();
 
@@ -394,6 +400,10 @@ async function init(): Promise<void> {
 
     wAIfu.package = getPackage();
     put(`w-AI-fu ${wAIfu.package.version}\n`);
+
+    if (await shouldUpdate() === true) {
+        await update();
+    }
 
     put('Loading config informations ...\n');
     wAIfu.config = getConfig();
@@ -547,7 +557,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
     if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
         if (wAIfu.config.twitch_channel_name === '') {
             put('Critical Error: Could not initialize the Twitch Chat Reader as the provided twitch channel name is empty.\n');
-            closeProgram(1);
+            closeProgram(ErrorCode.InvalidValue);
         }
         debug('initializing Twitch Chat Reader.\n');
         fetch(CHAT.api_url + '/run', {
@@ -814,7 +824,7 @@ async function handleCommand(command: string): Promise<string|null> {
         case '!save': {
             /** Saves the dialogue history to a file, see ../UserData/saved/ */
             const f = '../UserData/saved/log_' + new Date().getTime().toString() + '.txt';
-            put('\x1B[1;30m' + 'saved to: ' + resolve(f) + '\n' + '\x1B[0m');
+            put('\x1B[1;30m' + 'saved to: ' + path.resolve(f) + '\n' + '\x1B[0m');
             fs.writeFileSync(f, wAIfu.dialog_transcript);
             return null;
         }
@@ -1149,7 +1159,7 @@ function killProc(proc: SubProc, proc_name: string): Promise<void> {
  * @param code error code
  * @returns your freedom
  */
-function closeProgram(code: number = 0): void {
+function closeProgram(code: ErrorCode|number = ErrorCode.None): void {
     closeSubProcesses();
     put('Exiting w.AI.fu\n');
     process.exit(code);
@@ -1338,6 +1348,135 @@ function basic_encode(data: string): string {
 function basic_decode(data: Buffer): string {
     let b64 = Buffer.from(data.toString(), 'hex').toString('base64');
     return Buffer.from(b64, 'base64').toString('utf8');
+}
+
+async function unzip(zip_file_path: string, to_directory: string): Promise<boolean> {
+    try {
+        await extract(path.resolve(zip_file_path), { dir: path.resolve(to_directory) });
+        return true;
+    } catch(e) {
+        put(`Error: Could not unzip file ${zip_file_path} to directory ${to_directory}\n`);
+        console.log(e);
+        return false;
+    }
+}
+
+function printProgress(percent: number = 0): void {
+    let buff = ''.padStart(Math.round(percent * 35), '#').padEnd(35, ' ');
+    put('\r                                       ');
+    put('\r[' + buff + '] ' + Math.round(percent * 100).toString() + '%');
+}
+
+async function shouldUpdate(): Promise<boolean> {
+
+    if (fs.existsSync('../.dev') === true) {
+        return false;
+    }
+
+    let query: Response;
+    try {
+        query = await fetch('https://api.github.com/repos/wAIfu-DEV/w-AI-fu/tags');
+    } catch(e) {
+        put('Error: Could not contact github while trying to get latest version.\n');
+        return false;
+    }
+
+    const data = await query.json().catch((e) => {
+        put('Error: Could not retreive latest version from github.\n');
+        return false;
+    });
+
+    if (data[0] === undefined || data[0]["name"] === undefined) {
+        put('Error: Fetched invalid data from github while trying to retreive latest version.\n');
+        return false;
+    }
+
+    if (wAIfu.package.version !== data[0].name) {
+        const new_version = String(data[0].name).replaceAll(/[^0-9\.\,\-]/g, '');
+        const answer = await readline_interface.question(`\nA new version of w-AI-fu is available (${new_version})\nDo you want to install it? (Y/n): `);
+        return /Y|y/g.test(answer);
+    }
+    return false;
+}
+
+async function update(): Promise<boolean> {
+
+    put('\n');
+
+    let query: Response;
+    try {
+        query = await fetch('https://github.com/wAIfu-DEV/w-AI-fu/releases/latest/download/w-AI-fu.zip');
+    } catch(e) {
+        put('Error: Could not contact github while trying to download w-AI-fu.\n');
+        return false;
+    }
+    printProgress(0.1);
+    let arbuff: ArrayBuffer;
+    try {
+        arbuff = await query.arrayBuffer();
+    } catch(e) {
+        put('Error: Could not read received data from github while trying to download w-AI-fu.\n');
+        return false;
+    }
+    printProgress(0.2);
+    const buff = Buffer.from(arbuff);
+
+    printProgress(0.3);
+    fs.writeFileSync('../temp.zip', buff);
+
+    printProgress(0.4);
+    /** Move UserData to temp */
+    if (fs.existsSync('../TEMP') === false)
+        fs.mkdirSync('../TEMP');
+    fs.cpSync('../UserData', '../TEMP', { recursive: true, force: true });
+
+    process.chdir('../');
+
+    printProgress(0.5);
+    try {
+        fs.readdirSync('./').forEach((path) => {
+            if (path !== 'TEMP' && path !== 'temp.zip') {
+                if (path === 'w-AI-fu') {
+                    fs.readdirSync('./w-AI-fu').forEach((path2) => {
+                        if (path2 !== 'run.bat')
+                            fs.rmSync('./w-AI-fu/' + path2, { force: true, recursive: true });
+                    });
+                } else {
+                    fs.rmSync('./' + path, { force: true, recursive: true });
+                }
+            }
+        });
+    } catch(e) {
+        put('Critical Error: Could not remove some files while updating, total reinstallation might be required. User data such as characters and scripts will be present in the TEMP directory.\n');
+        closeProgram(ErrorCode.Critical);
+        return false;
+    }
+
+    printProgress(0.7);
+    await unzip('./temp.zip', './');
+
+    if (fs.existsSync('./w-AI-fu main') === false) {
+        put('Critical Error: Failed to extract the downloaded files, total reinstallation is required. User data such as characters and scripts will be present in the TEMP directory.\n');
+        closeProgram(ErrorCode.Critical);
+        return false;
+    }
+
+    printProgress(0.8);
+    fs.cpSync('./w-AI-fu main', './', { recursive: true, force: false });
+    fs.rmSync('./w-AI-fu main', { force: true, recursive: true });
+
+    printProgress(0.9);
+    fs.cpSync('./TEMP', './UserData', { recursive: true, force: true });
+    fs.rmSync('./TEMP', { force: true, recursive: true });
+    fs.rmSync('./temp.zip', { force: true, recursive: true });
+
+    printProgress(1);
+    put('\nSuccessfully updated w-AI-fu.\n\n');
+     
+    cproc.spawnSync(require.resolve(path.resolve('./INSTALL.bat')));
+
+    closeProgram(ErrorCode.None);
+    return true;
 }
 
 //#region GPL3_LICENSE
