@@ -159,6 +159,8 @@ function wsAUTH_SET(data: string): void {
 /** Handles changes to the character from the webui */
 function wsCHARA(data: string): void {
     const obj = JSON.parse(data);
+    wAIfu.config.character_name = obj.char_name;
+    wAIfu.character = obj;
     fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
 }
 

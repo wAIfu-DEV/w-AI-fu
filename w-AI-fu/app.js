@@ -139,6 +139,8 @@ function wsAUTH_SET(data) {
 }
 function wsCHARA(data) {
     const obj = JSON.parse(data);
+    wAIfu.config.character_name = obj.char_name;
+    wAIfu.character = obj;
     fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
 }
 function wsDEVICE(data) {
