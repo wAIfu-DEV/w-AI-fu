@@ -245,6 +245,8 @@ nb_s.addEventListener('change', () => {
 const ld_ch = document.getElementById('loaded-char');
 ld_ch.addEventListener('change', () => {
     setConfig('character_name', ld_ch.value);
+    ws.send('CONFIG ' + JSON.stringify(config));
+    getLatest();
 });
 
 async function getLatest() {
@@ -370,7 +372,7 @@ function addChatBubble(message) {
     view.scrollTo(0, view.scrollHeight);
 }
 
-async function setConfig(name, value) {
+function setConfig(name, value) {
     //ws.send('CONFIG ' + JSON.stringify({"name": name, "value": value}));
     if (value === "on") value = true;
     if (value === "off") value = false;

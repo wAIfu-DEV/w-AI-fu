@@ -115,6 +115,10 @@ function wsLATEST() {
 }
 function wsCONFIG(data) {
     const obj = JSON.parse(data);
+    if (wAIfu.config.character_name !== obj.character_name) {
+        wAIfu.config.character_name = obj.character_name;
+        wAIfu.character = getCharacter();
+    }
     wAIfu.config = obj;
     fs.writeFileSync('../config.json', data);
     wAIfu.should_reload = true;
@@ -1110,6 +1114,7 @@ async function update() {
     const buff = Buffer.from(arbuff);
     printProgress(0.3);
     fs.writeFileSync('../temp.zip', buff);
+    wAIfu.config = getConfig();
     printProgress(0.4);
     if (fs.existsSync('../TEMP') === false)
         fs.mkdirSync('../TEMP');
@@ -1150,6 +1155,7 @@ async function update() {
     fs.cpSync('./TEMP', './UserData', { recursive: true, force: true });
     fs.rmSync('./TEMP', { force: true, recursive: true });
     fs.rmSync('./temp.zip', { force: true, recursive: true });
+    fs.writeFileSync('./config.json', JSON.stringify(wAIfu.config));
     printProgress(1);
     put('\nSuccessfully updated w-AI-fu.\n\n');
     cproc.spawnSync(require.resolve(path.resolve('./INSTALL.bat')));
