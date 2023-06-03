@@ -1,5 +1,6 @@
 import base64
 from os import system
+import sys
 
 from typing import List, Optional
 from boilerplate import API
@@ -32,8 +33,15 @@ async def loaded():
 @app.route('/api', methods=['POST'])
 async def api():
     data = request.get_json()
-    text = await generate(data['data'][0], data['data'][1], data['data'][2])
-    return jsonify({'data': [str(base64.b64encode(bytes(text, encoding='utf8')), encoding='utf8')]}), 200
+    try:
+        text = await generate(data['data'][0], data['data'][1], data['data'][2])
+        return jsonify({'data': [str(base64.b64encode(bytes(text, encoding='utf8')), encoding='utf8')]}), 200
+    except Exception as e:
+        if e.args[0] == 401:
+            print('Incorrect NovelAI credentials.', file=sys.stderr)
+        else:
+            print(e, file=sys.stderr)
+        return 500
 
 async def generate(custom_prompt, craziness, creativity):
     global bad_words

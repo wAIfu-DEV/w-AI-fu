@@ -1,6 +1,7 @@
 import websocket
 import re
 import os
+import sys
 
 import logging
 
@@ -16,6 +17,9 @@ log = logging.getLogger('werkzeug')
 log.disabled = True
 app.logger.disabled = True
 
+def errlog(text: str):
+    print(str, file=sys.stderr)
+
 @app.route('/loaded', methods=['GET'])
 async def loaded():
     return '', 200
@@ -29,11 +33,16 @@ async def run():
     global channel
     data = request.get_json()
     channel = re.sub('[^a-zA-Z0-9\_\-]', '', data['data'][0])
+    await launch_ws()
+
+
+async def launch_ws():
     ws = websocket.WebSocketApp('wss://irc-ws.chat.twitch.tv:443',
                                 on_open=on_open,
                                 on_message=on_message,
                                 on_error=on_error,
-                                on_close=on_close)
+                                on_close=on_close
+                                )
     ws.run_forever()
 
 
@@ -59,8 +68,10 @@ def on_message(ws, message):
         parse_message(message)
 
 
-def on_error(ws, error):
-    print(error)
+async def on_error(ws, error):
+    errlog("ERROR: " + error)
+    print("RETRYING ...")
+    await launch_ws()
 
 
 def on_close(ws, close_status_code, close_msg):

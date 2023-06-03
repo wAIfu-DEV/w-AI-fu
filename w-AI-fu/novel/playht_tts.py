@@ -5,12 +5,8 @@ import os
 import requests
 import pyaudio
 import wave
-import time
 import json
 
-from os import system
-from os import path
-from pydub import AudioSegment
 from flask import Flask, request, jsonify
 
 import logging

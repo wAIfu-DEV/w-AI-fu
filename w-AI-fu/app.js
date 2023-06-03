@@ -171,6 +171,7 @@ class Config {
     chat_read_timeout_sec = 2;
     filter_bad_words = true;
     audio_device = -1;
+    mic_sensitivity = 0.5;
 }
 class Character {
     char_name = '';
@@ -492,22 +493,30 @@ async function summonProcesses(mode) {
         put('Loaded CHAT.\n');
     }
 }
+function readPythonStdOut(subprocess, proc_name) {
+    subprocess.process?.stdout?.on('data', data => {
+        if (data.toString().startsWith(' *'))
+            return;
+        put(`python ${proc_name}:\n`);
+        put(data.toString() + '\n');
+    });
+}
+function readPythonStdErr(subprocess, proc_name) {
+    subprocess.process?.stderr?.on('data', data => {
+        if (data.toString().startsWith(' *'))
+            return;
+        put(`python ${proc_name}:\n`);
+        errPut(data.toString() + '\n');
+    });
+}
 async function startLLM() {
     if (LLM.running)
         return;
     const USR = getAuth('novel_user');
     const PSW = getAuth('novel_pass');
     LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
-    LLM.process.stdout?.on('data', data => {
-        if (data.toString().startsWith(' *'))
-            return;
-        put(`python LLM:\n\x1B[1;30m${data.toString()}\x1B[0m`);
-    });
-    LLM.process.stderr?.on('data', data => {
-        if (data.toString().startsWith(' *'))
-            return;
-        put(`python LLM:\n\x1B[0;31m${data.toString()}\x1B[0m`);
-    });
+    readPythonStdOut(LLM, 'LLM');
+    readPythonStdErr(LLM, 'LLM');
     LLM.running = true;
 }
 async function startTTS() {
@@ -517,16 +526,8 @@ async function startTTS() {
     const PSW = (wAIfu.config.tts_use_playht) ? getAuth('play-ht_auth') : getAuth('novel_pass');
     const tts_provider = (wAIfu.config.tts_use_playht) ? 'playht_tts.py' : 'novel_tts.py';
     TTS.process = cproc.spawn('python', [tts_provider], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
-    TTS.process.stdout?.on('data', data => {
-        if (data.toString().startsWith(' *'))
-            return;
-        put(`python TTS:\n\x1B[1;30m${data.toString()}\x1B[0m`);
-    });
-    TTS.process.stderr?.on('data', data => {
-        if (data.toString().startsWith(' *'))
-            return;
-        put(`python TTS:\n\x1B[0;31m${data.toString()}\x1B[0m`);
-    });
+    readPythonStdOut(TTS, 'TTS');
+    readPythonStdErr(TTS, 'TTS');
     TTS.running = true;
 }
 async function startLiveChat() {
@@ -534,22 +535,16 @@ async function startLiveChat() {
         return;
     const OAUTH = getAuth('twitch_oauth');
     CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH }, detached: DEBUGMODE, shell: DEBUGMODE });
-    CHAT.process.stdout?.on('data', data => {
-        if (data.toString().startsWith(' *'))
-            return;
-        put(`python CHAT:\n\x1B[1;30m${data.toString()}\x1B[0m`);
-    });
-    CHAT.process.stderr?.on('data', data => {
-        if (data.toString().startsWith(' *'))
-            return;
-        put(`python CHAT:\n\x1B[0;31m${data.toString()}\x1B[0m`);
-    });
+    readPythonStdOut(CHAT, 'CHAT');
+    readPythonStdErr(CHAT, 'CHAT');
     CHAT.running = true;
 }
 async function startSTT() {
     if (STT.running)
         return;
     STT.process = cproc.spawn('python', ['speech.py'], { cwd: './speech', detached: DEBUGMODE, shell: DEBUGMODE });
+    readPythonStdOut(STT, 'STT');
+    readPythonStdErr(STT, 'STT');
     STT.running = true;
 }
 async function sendToLLM(prompt) {
@@ -908,6 +903,9 @@ function warnPut(text) {
 }
 function errPut(text) {
     process.stdout.write('\x1B[0;31m' + text + '\x1B[0m');
+    if (ws !== null && ws.readyState === ws.OPEN) {
+        ws.send('ERROR ' + text);
+    }
 }
 function debug(text) {
     if (wAIfu.is_debug || DEBUGMODE)

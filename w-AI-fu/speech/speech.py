@@ -1,28 +1,29 @@
 import speech_recognition as sr
 import os.path
-from os import system
 import time
+import sys
 
-print('Loading speech recognition ...')
+print('Loading speech recognition ...', file=sys.stdout)
 
 if os.path.isfile('input.txt'):
     os.remove('input.txt')
 
 while True:
     while os.path.isfile('input.txt'):
-        time.sleep(0.25)
+        time.sleep(0.15)
 
     with sr.Microphone() as source:
         recognizer = sr.Recognizer()
-        recognizer.energy_threshold = 1500
+        recognizer.energy_threshold = 2500 #50 - 4000
+        recognizer.adjust_for_ambient_noise(source, 0.5)
         source.pause_threshold = 0.25
-        print('Awaiting audio input ...')
+        print('Awaiting audio input ...', file=sys.stdout)
         audio = recognizer.listen(source, phrase_time_limit=None, timeout=None)
         try:
             text = recognizer.recognize_google(audio)
             #text = recognizer.recognize_api(audio)
             if text:
-                print(f"Recognized: {text}")
+                print(f"Recognized: {text}", file=sys.stdout)
                 with open('input.txt', 'w') as f:
                     f.write(text)
         except:

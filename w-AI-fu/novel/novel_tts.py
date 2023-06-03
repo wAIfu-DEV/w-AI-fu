@@ -1,11 +1,9 @@
 import os
+import sys
 import pyaudio  
 import wave
 import json
 
-from os import path
-from os import system
-from pydub import AudioSegment
 from boilerplate import API
 from flask import Flask, request, jsonify, make_response
 
@@ -40,7 +38,8 @@ async def api():
 
     try:
         await generate_tts(speak=data['data'][0], voice_seed=data['data'][1])
-    except:
+    except Exception as e:
+        print(e, file=sys.stderr)
         response = jsonify({'message': 'GENERATION_ERROR'})
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 500 
@@ -96,7 +95,8 @@ def play_tts():
                                         rate=wave_file.getframerate(),
                                         output=True,
                                         output_device_index=device_index) # Set the input device index to the virtual audio cable
-    except:
+    except Exception as e:
+        print('Cannot use selected audio device as output audio device.', file=sys.stderr)
         wave_file.close()
         return False
     # Read data from the wave file and capture it from the virtual audio cable

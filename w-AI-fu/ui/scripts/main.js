@@ -117,6 +117,10 @@ async function handleSocketMessage(data) {
                 addConsoleBubble(false, data["text"]);
             return;
         }
+        case 'ERROR': {
+            addErrorBubble(payload);
+            return;
+        }
         case 'AUTH': {
             ws.dispatchEvent(new CustomEvent('auth', {detail: JSON.parse(payload)}));
             return;
@@ -345,13 +349,15 @@ function addFilteredBubble(filtered) {
 
 function addErrorBubble(error) {
     const view = document.querySelector('ConsoleView');
-    view.innerHTML +=
-        `<ConsoleViewSection>
-            <ConsoleBubbleError>
-                [ ERROR ]
-                <p>${error.trim()}</p>
-            </ConsoleBubbleError>
-        </ConsoleViewSection>`;
+    const viewsec = document.createElement('ConsoleViewSection');
+    const viewbb = document.createElement('ConsoleBubbleError');
+    const bbp = document.createElement('p');
+
+    view.appendChild(viewsec);
+    viewsec.appendChild(viewbb);
+    viewbb.textContent = '[ ERROR ]';
+    viewbb.appendChild(bbp);
+    bbp.textContent = error.trim();
     view.scrollTo(0, view.scrollHeight);
 }
 

@@ -121,6 +121,7 @@ ConsoleBubbleChat {
 }
 
 ConsoleBubbleChat > p {
+    user-select: text;
     padding: .75rem;
     margin-top: .75rem;
     background-color: rgb(10, 15, 20);
@@ -138,6 +139,7 @@ ConsoleBubbleError {
 }
 
 ConsoleBubbleError > p {
+    user-select: text;
     padding: .75rem;
     margin-top: .75rem;
     background-color: rgb(10, 15, 20);
@@ -156,6 +158,7 @@ ConsoleBubbleFiltered {
 }
 
 ConsoleBubbleFiltered > p {
+    user-select: text;
     padding: .75rem;
     margin-top: .75rem;
     background-color: rgb(10, 15, 20);

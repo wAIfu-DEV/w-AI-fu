@@ -214,6 +214,8 @@ class Config {
     filter_bad_words: boolean = true;
     /** Index of the selected audio device, -1 uses the default audio device */
     audio_device: number = -1;
+    /**  */
+    mic_sensitivity: number = 0.5;
 }
 
 /** see ../UserData/characters/*.json */
@@ -672,6 +674,22 @@ async function summonProcesses(mode: InputMode): Promise<void> {
     }
 }
 
+function readPythonStdOut(subprocess: SubProc, proc_name: string) {
+    subprocess.process?.stdout?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python ${proc_name}:\n`);
+        put(data.toString() + '\n');
+    });
+}
+
+function readPythonStdErr(subprocess: SubProc, proc_name: string) {
+    subprocess.process?.stderr?.on('data', data => {
+        if (data.toString().startsWith(' *')) return;
+        put(`python ${proc_name}:\n`);
+        errPut(data.toString() + '\n');
+    });
+}
+
 async function startLLM() {
     if (LLM.running) return;
 
@@ -681,14 +699,8 @@ async function startLLM() {
     LLM.process = cproc.spawn('python', ['novel_llm.py'],
         { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
     
-    LLM.process.stdout?.on('data', data => {
-        if (data.toString().startsWith(' *')) return;
-        put(`python LLM:\n\x1B[1;30m${data.toString()}\x1B[0m`);
-    });
-    LLM.process.stderr?.on('data', data => {
-        if (data.toString().startsWith(' *')) return;
-        put(`python LLM:\n\x1B[0;31m${data.toString()}\x1B[0m`);
-    });
+    readPythonStdOut(LLM, 'LLM');
+    readPythonStdErr(LLM, 'LLM');
 
     LLM.running = true;
 }
@@ -704,14 +716,8 @@ async function startTTS() {
     TTS.process = cproc.spawn('python', [tts_provider],
         { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
     
-    TTS.process.stdout?.on('data', data => {
-        if (data.toString().startsWith(' *')) return;
-        put(`python TTS:\n\x1B[1;30m${data.toString()}\x1B[0m`);
-    });
-    TTS.process.stderr?.on('data', data => {
-        if (data.toString().startsWith(' *')) return;
-        put(`python TTS:\n\x1B[0;31m${data.toString()}\x1B[0m`);
-    });
+    readPythonStdOut(TTS, 'TTS');
+    readPythonStdErr(TTS, 'TTS');
     
     TTS.running = true;
 }
@@ -723,14 +729,8 @@ async function startLiveChat() {
 
     CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH }, detached: DEBUGMODE, shell: DEBUGMODE });
     
-    CHAT.process.stdout?.on('data', data => {
-        if (data.toString().startsWith(' *')) return;
-        put(`python CHAT:\n\x1B[1;30m${data.toString()}\x1B[0m`);
-    });
-    CHAT.process.stderr?.on('data', data => {
-        if (data.toString().startsWith(' *')) return;
-        put(`python CHAT:\n\x1B[0;31m${data.toString()}\x1B[0m`);
-    });
+    readPythonStdOut(CHAT, 'CHAT');
+    readPythonStdErr(CHAT, 'CHAT');
     
     CHAT.running = true;
 }
@@ -739,6 +739,10 @@ async function startSTT() {
     if (STT.running) return;
 
     STT.process = cproc.spawn('python', ['speech.py'], { cwd: './speech', detached: DEBUGMODE, shell: DEBUGMODE });
+
+    readPythonStdOut(STT, 'STT');
+    readPythonStdErr(STT, 'STT');
+
     STT.running = true;
 }
 
@@ -1198,6 +1202,9 @@ function warnPut(text: string): void {
 
 function errPut(text: string): void {
     process.stdout.write('\x1B[0;31m' + text + '\x1B[0m');
+    if (ws !== null && ws.readyState === ws.OPEN) {
+        ws.send('ERROR ' + text);
+    }
 }
 
 /**
