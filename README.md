@@ -5,8 +5,6 @@
 
 ![Our AI is perfectly aligned!](https://github.com/wAIfu-DEV/w-AI-fu/blob/main/w-AI-fu/images/readme/01.webp)
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/cInl8-7RJ7A" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
-
 ## ⚙️ INSTALL
 
 Before running w-AI-fu, follow these steps:
