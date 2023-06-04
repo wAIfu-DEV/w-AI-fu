@@ -33,6 +33,7 @@ async def run():
     global channel
     data = request.get_json()
     channel = re.sub('[^a-zA-Z0-9\_\-]', '', data['data'][0])
+    print('Starting WebSocket ...', file=sys.stdout)
     await launch_ws()
 
 

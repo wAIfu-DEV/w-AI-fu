@@ -311,8 +311,9 @@ async function sendInput() {
     const cnf = document.querySelector('ConsoleNameField');
 
     if (cnf.textContent !== last_username) {
-        await setConfig('user_name', cnf.textContent);
+        setConfig('user_name', cnf.textContent);
         last_username = cnf.textContent;
+        ws.send('CONFIG ' + JSON.stringify(config));
     }
 
     ws.send('MSG ' + input_data);

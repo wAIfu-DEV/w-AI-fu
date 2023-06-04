@@ -299,6 +299,12 @@ main();
 /** Entry point, main I/O loop */
 async function main(): Promise<void> {
 
+    if (process.argv.find(value => value === '--test') !== undefined) {
+        await test();
+        closeProgram(0);
+        return;
+    }
+
     /** Fetches the required data and initializes the subprocesses */
     await init();
 
@@ -434,6 +440,7 @@ async function reinit() {
     put('Reinitializing ...\n');
     wAIfu.package = getPackage();
     wAIfu.config = getConfig();
+    wAIfu.chat_reader_initialized = false;
     wAIfu.live_chat = wAIfu.config.read_live_chat;
     wAIfu.input_mode = (wAIfu.config.is_voice_input)
         ? InputMode.Voice
@@ -602,6 +609,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
 async function getChatOrNothing(): Promise<{message:string,name:string}> {
     // If can't read chat messages
     if (wAIfu.live_chat === false) {
+        debug('Returned empty msg because wAIfu.live_chat is false.\n')
         return { message: '', name: '' };
     }
     // Get latest twitch chat message
@@ -612,9 +620,11 @@ async function getChatOrNothing(): Promise<{message:string,name:string}> {
 
     /** If same message, skip */
     if (wAIfu.last_chat_msg === chatmsg.message) {
+        debug(`Skipped message because is same than previous one: ${wAIfu.last_chat_msg}\n`);
         return { message: '', name: '' };
     }
     else {
+        debug('Successfuly got new message.\n');
         wAIfu.last_chat_msg = chatmsg.message;
         return { message: chatmsg.message, name: chatmsg.user };
     }
@@ -958,45 +968,65 @@ function verifyText(text: string): boolean {
  * Sends LLM output to the TTS generator
  * @param say text spoken by the TTS
  */
-async function sendToTTS(say: string): Promise<void> {
-    let default_voice = (wAIfu.config.tts_use_playht === true)
-        ? 'Scarlett'
-        : 'galette';
-    
-    let voice = (wAIfu.character.voice == '')
-        ? default_voice
-        : wAIfu.character.voice;
+function sendToTTS(say: string): Promise<void> {
+    return new Promise<void>(async(resolve) => {
 
-    const payload = JSON.stringify({ data: [say, voice] });
-    debug('sending: ' + payload + '\n');
+        /** have to make it any because typescript sucks ass */
+        let promise_resolved: any = false;
 
-    const post_query = await fetch(TTS.api_url + '/api', {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: payload
-    }).catch((e: any) => {
-        errPut('Critical Error: Could not contact the TTS subprocess.\n');
-        console.log(e);
-        closeProgram(ErrorCode.HTTPError);
+        let default_voice = (wAIfu.config.tts_use_playht === true)
+            ? 'Scarlett'
+            : 'galette';
+        
+        let voice = (wAIfu.character.voice == '')
+            ? default_voice
+            : wAIfu.character.voice;
+
+        const payload = JSON.stringify({ data: [say, voice] });
+        debug('sending: ' + payload + '\n');
+
+        // Timeout
+        setTimeout(() => {
+            if (promise_resolved === true) return;
+            promise_resolved = true;
+            warnPut('Error: Timed out while awaiting for TTS\'s response.');
+            resolve();
+        }, 45_000);
+
+        const post_query = await fetch(TTS.api_url + '/api', {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: payload
+        }).catch((e: any) => {
+            errPut('Critical Error: Could not contact the TTS subprocess.\n');
+            console.log(e);
+            closeProgram(ErrorCode.HTTPError);
+        });
+
+        if (promise_resolved === true) return;
+
+        const text = await post_query!.text();
+        if (text[0] !== undefined && text[0] !== '{') {
+            errPut('Critical Error: Received incorrect json from TTS.\n');
+            console.log(text);
+            closeProgram(ErrorCode.InvalidValue);
+        }
+        const data = JSON.parse(text);
+        debug('received: ' + JSON.stringify(data) + '\n');
+
+        /** If audio device is not capable of being used as ouput */
+        if (data["message"] === 'AUDIO_ERROR') {
+            warnPut('Error: Could not play TTS because of invalid output audio device.\n');
+        }
+        if (data["message"] === 'GENERATION_ERROR') {
+            warnPut('Error: Could not play TTS because of an error with the NovelAI API.\n');
+        }
+        promise_resolved = true;
+        resolve();
     });
-    const text = await post_query!.text();
-    if (text[0] !== undefined && text[0] !== '{') {
-        errPut('Critical Error: Received incorrect json from TTS.\n');
-        console.log(text);
-        closeProgram(ErrorCode.InvalidValue);
-    }
-    const data = JSON.parse(text);
-    debug('received: ' + JSON.stringify(data) + '\n');
-
-    /** If audio device is not capable of being used as ouput */
-    if (data["message"] === 'AUDIO_ERROR') {
-        warnPut('Error: Could not play TTS because of invalid output audio device.\n');
-    }
-    if (data["message"] === 'GENERATION_ERROR') {
-        warnPut('Error: Could not play TTS because of an error with the NovelAI API.\n');
-    }
+    
 }
 
 /** Retreives the last message from the twich chat, see ./twitch/twitchchat.py */
@@ -1098,8 +1128,8 @@ function voiceGet(): Promise<string|null> {
                     resolve(null);
                 } else if (fs.existsSync('./speech/input.txt')) {
                     text = fs.readFileSync('./speech/input.txt').toString('utf8');
-                    fs.unlinkSync('./speech/input.txt');
                     resolved = true;
+                    fs.unlinkSync('./speech/input.txt');
                     resolve(text);
                 } else if (wAIfu.command_queue.length > 0) {
                     debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
@@ -1526,6 +1556,66 @@ async function update(): Promise<boolean> {
 
     closeProgram(ErrorCode.None);
     return true;
+}
+
+/** Run tests in order to check for bugs before publishing */
+async function test() {
+
+    put('Entering TEST mode ...\n');
+
+
+    put('Checking LLM response ...\n');
+    await startLLM();
+    await awaitProcessLoaded(LLM, 'LLM');
+    let r = await sendToLLM('test');
+    if (r === null || r === undefined) {
+        errPut('rejected.');
+        return;
+    }
+    await killProc(LLM, 'LLM')
+    put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
+
+
+    put('Checking TTS response ...\n');
+    await startTTS();
+    await awaitProcessLoaded(TTS, 'TTS');
+    await sendToTTS('test');
+    await killProc(TTS, 'TTS')
+    put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
+
+
+    put('Checking CHAT response ...\n');
+    await startLiveChat();
+    await awaitProcessLoaded(CHAT, 'CHAT');
+    let c = await getLastTwitchChat();
+    if (c === null || c === undefined) {
+        errPut('rejected.\n');
+        return;
+    }
+    await killProc(CHAT, 'CHAT');
+    put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
+
+
+    put('Checking Text Input ...\n');
+    init_get();
+    wAIfu.config.read_live_chat = false;
+    wAIfu.command_queue.push('test');
+    let t = await textGet();
+    if (t === null || t === undefined) {
+        errPut('rejected.\n');
+        return;
+    }
+    put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
+
+
+    put('Checking Voice Input ...\n');
+    fs.writeFileSync('./speech/input.txt', 'test');
+    let v = await voiceGet();
+    if (t === null || t === undefined) {
+        errPut('rejected.\n');
+        return;
+    }
+    put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
 }
 
 //#region GPL3_LICENSE

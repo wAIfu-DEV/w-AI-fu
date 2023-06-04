@@ -18,7 +18,11 @@ while True:
         recognizer.adjust_for_ambient_noise(source, 0.5)
         source.pause_threshold = 0.25
         print('Awaiting audio input ...', file=sys.stdout)
-        audio = recognizer.listen(source, phrase_time_limit=None, timeout=None)
+        audio = None
+        try:
+            audio = recognizer.listen(source, phrase_time_limit=10, timeout=None)
+        except:
+            continue
         try:
             text = recognizer.recognize_google(audio)
             #text = recognizer.recognize_api(audio)
