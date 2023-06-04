@@ -181,6 +181,7 @@ class Character {
     topics = [];
     craziness = 0.5;
     creativity = 0.5;
+    max_output_length = 120;
 }
 class Memory {
     long_term = '';
@@ -311,7 +312,7 @@ async function init() {
     put('Spawning subprocesses ...\n');
     await summonProcesses(wAIfu.input_mode);
     put('Starting WebUI ...\n');
-    cproc.execSync('start ./ui/index.html');
+    cproc.spawn('cmd.exe', ['/C', 'start index.html'], { cwd: './ui' });
     put('Loaded w-AI-fu.\n\n');
     put('Commands: !mode [text, voice], !say [...], !script [_.txt], !chat [on, off], !history, !char, !reset, !stop, !save, !debug, !reload\n');
     init_get();
@@ -418,7 +419,9 @@ async function getInput(mode) {
     }
     if (result === null && wAIfu.live_chat) {
         const { message, name } = await getChatOrNothing();
-        if (wAIfu.config.monologue === true && message === '' && name === '') {
+        is_mono: if (wAIfu.config.monologue === true && message === '' && name === '') {
+            if (wAIfu.character.topics.length <= 0)
+                break is_mono;
             let rdm = Math.random();
             let topic = wAIfu.character.topics[Math.round((wAIfu.character.topics.length - 1) * rdm)];
             if (topic === undefined) {
@@ -557,7 +560,12 @@ async function startSTT() {
     STT.running = true;
 }
 async function sendToLLM(prompt) {
-    const payload = JSON.stringify({ data: [prompt, wAIfu.character.craziness, wAIfu.character.creativity] });
+    const payload = JSON.stringify({ data: [
+            prompt,
+            (wAIfu.character.craziness !== undefined) ? wAIfu.character.craziness : 0.5,
+            (wAIfu.character.creativity !== undefined) ? wAIfu.character.creativity : 0.5,
+            (wAIfu.character.max_output_length !== undefined) ? wAIfu.character.max_output_length : 120
+        ] });
     debug('sending: ' + payload + '\n');
     const post_query = await fetch(LLM.api_url + '/api', {
         method: "POST",

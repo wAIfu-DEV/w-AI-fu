@@ -164,15 +164,22 @@ DOM.getId('creativity').self((ref) => {
     });
 });
 
+DOM.getId('output-length').self((ref) => {
+    ref.on('input', () => {
+        DOM.getId('output-length-label').set('textContent', ref.get('value'));
+    });
+});
+
 DOM.query('CharacterSaveButton').on('click', async() => {
     const new_chara = {
         "char_name": DOM.getId('char_name').get('textContent'), 
-        "char_persona": DOM.getId('char_desc').get('innerHTML').replaceAll('<br>', '\n'),
-        "example_dialogue": DOM.getId('char_exd').get('innerHTML').replaceAll('<br>', '\n'),
+        "char_persona": DOM.getId('char_desc').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<.*?\>/g, ''),
+        "example_dialogue": DOM.getId('char_exd').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<.*?\>/g, ''),
         "voice": DOM.getId('char_voice').get('textContent'),
         "topics": DOM.getId('char_topics').get('textContent').split(/, |,/g).filter((v) => v !== undefined && v !== ''),
         "craziness": Number(DOM.getId('craziness').get('value')),
-        "creativity": Number(DOM.getId('creativity').get('value'))
+        "creativity": Number(DOM.getId('creativity').get('value')),
+        "max_output_length": Number(DOM.getId('output-length').get('value'))
     };
     ws.send('CHARA ' + JSON.stringify(new_chara));
     await setConfig('character_name', new_chara.char_name);

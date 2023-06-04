@@ -231,6 +231,7 @@ class Character {
     topics: string[] = [];
     craziness: number = 0.5;
     creativity: number = 0.5;
+    max_output_length: number = 120;
 }
 
 /** Used to prepend the prompt in order to give more context to the LLM */
@@ -426,7 +427,8 @@ async function init(): Promise<void> {
     await summonProcesses(wAIfu.input_mode);
 
     put('Starting WebUI ...\n');
-    cproc.execSync('start ./ui/index.html');
+    cproc.spawn('cmd.exe', ['/C', 'start index.html'], {cwd: './ui'});
+    //cproc.execSync('start ./ui/index.html');
 
     put('Loaded w-AI-fu.\n\n');
     put('Commands: !mode [text, voice], !say [...], !script [_.txt], !chat [on, off], !history, !char, !reset, !stop, !save, !debug, !reload\n');
@@ -579,8 +581,10 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
         const { message, name } = await getChatOrNothing();
 
         /** got no new message, start ranting about a topic of interest */
-        if (wAIfu.config.monologue === true && message === '' && name === '') {
+        is_mono: if (wAIfu.config.monologue === true && message === '' && name === '') {
             //if (Math.random() < 1/2) {
+                if (wAIfu.character.topics.length <= 0) break is_mono;
+
                 let rdm = Math.random();
                 let topic = wAIfu.character.topics[ Math.round((wAIfu.character.topics.length - 1) * rdm) ];
                 if (topic === undefined) {
@@ -762,7 +766,12 @@ async function startSTT() {
  */
 async function sendToLLM(prompt: string): Promise<string> {
 
-    const payload = JSON.stringify({ data: [prompt, wAIfu.character.craziness, wAIfu.character.creativity] });
+    const payload = JSON.stringify({ data: [
+        prompt,
+        (wAIfu.character.craziness !== undefined) ? wAIfu.character.craziness : 0.5,
+        (wAIfu.character.creativity !== undefined) ? wAIfu.character.creativity : 0.5,
+        (wAIfu.character.max_output_length !== undefined) ? wAIfu.character.max_output_length : 120
+    ] });
     debug('sending: ' + payload + '\n');
 
     const post_query = await fetch(LLM.api_url + '/api', {

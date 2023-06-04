@@ -34,7 +34,7 @@ async def loaded():
 async def api():
     data = request.get_json()
     try:
-        text = await generate(data['data'][0], data['data'][1], data['data'][2])
+        text = await generate(data['data'][0], data['data'][1], data['data'][2], data['data'][3])
         return jsonify({'data': [str(base64.b64encode(bytes(text, encoding='utf8')), encoding='utf8')]}), 200
     except Exception as e:
         if e.args[0] == 401:
@@ -43,17 +43,18 @@ async def api():
             print(e, file=sys.stderr)
         return 500
 
-async def generate(custom_prompt, craziness, creativity):
+async def generate(custom_prompt, craziness, creativity, max_output_length):
     global bad_words
     async with API() as api_handler:
         novel_api = api_handler.api
         model = Model.Euterpe
         #model = Model.Krake
+        #model = Model.Clio
         preset = Preset.from_official(model, "Basic Coherence")
         #preset = Preset.from_official(model, "Moonlit Chronicler")
         #preset = Preset.from_official(model, "Top Gun Beta")
         #preset = Preset.from_default(model)
-        preset["max_length"] = 120 #40
+        preset["max_length"] = max_output_length #120
         preset["min_length"] = 1 #1
         preset["repetition_penalty"] = 1 + craziness #1.75 #1.15375 #1.1537
         #preset["repetition_penalty_frequency"] = 0 #0
