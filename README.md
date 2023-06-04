@@ -6,7 +6,7 @@
 ![Our AI is perfectly aligned!](https://github.com/wAIfu-DEV/w-AI-fu/blob/main/w-AI-fu/images/readme/01.webp)
 
 
-<video src="https://github.com/wAIfu-DEV/w-AI-fu/assets/132222556/5970eb43-cb0e-4d73-8092-b7f81ede388a" controls></video>
+https://github.com/wAIfu-DEV/w-AI-fu/assets/132222556/5970eb43-cb0e-4d73-8092-b7f81ede388a
 
 
 ## ⚙️ INSTALL
