@@ -111,7 +111,7 @@ async function handleSocketMessage(data) {
         case 'MSG_OUT': {
             const data = JSON.parse(payload);
             if (data["filtered"] !== null) {
-                addFilteredBubble(data["filtered"]);
+                addFilteredBubble(data["filtered"], data["text"]);
             }
             else
                 addConsoleBubble(false, data["text"]);
@@ -170,9 +170,41 @@ DOM.getId('output-length').self((ref) => {
     });
 });
 
+DOM.getId('randomize-voice-seed').self((ref) => {
+    ref.on('click', () => {
+        const letters = 'abcdefghijklmnopqrstuvwxyz';
+        let rdm_seed = '';
+        let bound = Math.ceil(Math.random() * 15);
+        for (let i = 0; i < bound; i++)
+            rdm_seed += letters[Math.floor(Math.random() * letters.length)];
+        DOM.getId('char_voice').set('textContent', rdm_seed);
+    });
+});
+
+DOM.getId('test-audio').self((ref) => {
+    ref.on('click', () => {
+        sendCommand('!say This is a test.');
+    });
+});
+
+DOM.getId('test-voice').self((ref) => {
+    ref.on('click', () => {
+
+        let test_text = 'This is a test. Is this the one?';
+        
+        // Easter egg btw
+        let rdm = Math.random();
+        if (rdm <= 0.015) {
+            test_text = 'I AM LIVING IN YOUR WALLS, I AM WATCHING YOU!!!!!!!!!!!!!!!!!!!!!!!!!!';
+        }
+
+        sendCommand(`!testvoice ${ DOM.getId('char_voice').get('textContent') }###${test_text}`);
+    });
+});
+
 DOM.query('CharacterSaveButton').on('click', async() => {
     const new_chara = {
-        "char_name": DOM.getId('char_name').get('textContent'), 
+        "char_name": DOM.getId('char_name').get('textContent'),
         "char_persona": DOM.getId('char_desc').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<.*?\>/g, ''),
         "example_dialogue": DOM.getId('char_exd').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<.*?\>/g, ''),
         "voice": DOM.getId('char_voice').get('textContent'),
@@ -340,14 +372,17 @@ function addConsoleBubble(input, text) {
     return a;
 }
 
-function addFilteredBubble(filtered) {
+function addFilteredBubble(filtered, text) {
     const view = document.querySelector('ConsoleView');
     view.innerHTML +=
         `<ConsoleViewSection>
             <ConsoleBubbleFiltered>
                 [ FILTERED ]
-                <p>${filtered.trim()}</p>
-                <FilteredOptionsButton onclick="sendCommand(\'!say ${filtered.trim().replaceAll(/[^a-zA-Z,.!? 0-9]/g, '')}\');">
+                <span>
+                    <p class="short-p">${filtered.trim()}</p> in
+                </span>
+                <p>${text.trim()}</p>
+                <FilteredOptionsButton onclick="sendCommand(\'!say ${text.trim().replaceAll(/[^a-zA-Z,.!? 0-9]/g, '')}\');">
                     Unfilter
                 </FilteredOptionsButton>
             </ConsoleBubbleFiltered>

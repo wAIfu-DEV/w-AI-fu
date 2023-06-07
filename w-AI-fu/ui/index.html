@@ -99,6 +99,7 @@
             <ConfigLine title="">
                 <Label>Output Audio Device</Label>
                 <select id="audio-device"></select>
+                <AudioTestButton id="test-audio">Test</AudioTestButton>
             </ConfigLine>
         </ConfigLong>
         <ConfigLong>
@@ -121,7 +122,11 @@
             <InputField id="char_topics" contenteditable="true" placeholder="List of topics the character will start talking"></InputField>
             <Spacer></Spacer>
             <Label>Voice Seed</Label>
-            <InputField id="char_voice" contenteditable="true" placeholder="Seed for the generation of the voice"></InputField>
+            <InputLine>
+                <InputField id="char_voice" contenteditable="true" placeholder="Seed for the generation of the voice"></InputField>
+                <CharacterFieldSideButton id="randomize-voice-seed">Random</CharacterFieldSideButton>
+                <AudioTestButton id="test-voice">Test</AudioTestButton>
+            </InputLine>
             <Spacer></Spacer>
             <Label>Craziness</Label>
             <RangeLine>

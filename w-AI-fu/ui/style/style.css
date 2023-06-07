@@ -157,6 +157,17 @@ ConsoleBubbleFiltered {
     justify-self: left;
 }
 
+ConsoleBubbleFiltered .short-p {
+    display: inline-block;
+    user-select: text;
+    padding: .75rem;
+    margin-top: .75rem;
+    background-color: rgb(10, 15, 20);
+    border: solid 1px rgb(50, 60, 70);
+    border-radius: .75rem;
+    color: white;
+}
+
 ConsoleBubbleFiltered > p {
     user-select: text;
     padding: .75rem;
@@ -397,6 +408,8 @@ FlipFlop[value="on"]:hover {
 }
 
 select {
+    min-width: 1rem;
+    max-width: 30rem;
     background-color: rgb(20, 25, 30);
     border-radius: .75rem;
     border: solid 1px rgb(50, 60, 70);
@@ -508,6 +521,34 @@ DisplayAuthButton:hover {
     background-color: rgb(50, 60, 70);
 }
 
+CharacterFieldSideButton {
+    cursor: pointer;
+    display: inline-block;
+    padding: .5rem .75rem;
+    padding-top: .5rem;
+    margin-left: .5rem;
+    border-radius: 1rem;
+    border: solid 1px rgb(50, 60, 70);
+}
+
+CharacterFieldSideButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
+AudioTestButton {
+    cursor: pointer;
+    display: inline-block;
+    padding: .5rem .75rem;
+    padding-top: .5rem;
+    margin-left: .5rem;
+    border-radius: 1rem;
+    border: solid 1px rgb(50, 60, 70);
+}
+
+AudioTestButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
 .slider {
     flex-grow: 1;
     margin-right: .75rem;
@@ -520,6 +561,15 @@ RangeLine {
 
 RangeLine > Label {
     width: 2rem;
+}
+
+InputLine {
+    display: flex;
+    flex-direction: row;
+}
+
+InputLine > InputField {
+    flex-grow: 1;
 }
 
 .BigRedButton {

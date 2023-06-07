@@ -216,6 +216,8 @@ class Config {
     audio_device: number = -1;
     /**  */
     mic_sensitivity: number = 0.5;
+    /** Weither to use the NovelAI Clio model instead of Euterpez */
+    use_clio_model: boolean = false
 }
 
 /** see ../UserData/characters/*.json */
@@ -292,7 +294,7 @@ const LLM: SubProc =  new SubProc(`http://${HOST_PATH}:${PORT_LLM}`);
 /** Subprocess responsible for the NovelAI TTS, see ./novel/novel_tts.py */
 const TTS: SubProc =  new SubProc(`http://${HOST_PATH}:${PORT_TTS}`);
 /** Subprocess responsible for the Twitch Chat Reading, see ./novel/novel_tts.py */
-const CHAT: SubProc = new SubProc(`http://${HOST_PATH}:${PORT_CHAT}`);
+const CHAT: SubProc = new SubProc('');
 /** Subprocess responsible for the Speech recognition, see ./novel/novel_tts.py */
 const STT: SubProc =  new SubProc('');
 
@@ -358,14 +360,13 @@ async function main(): Promise<void> {
         let filtered_content: string|null = null;
 
         /** Bad words checking */
-        if (verifyText(displayed)) {
-            filtered_content = displayed;
-            displayed = ' Filtered.\n';
+        const verify_result = verifyText(displayed);
+        if (verify_result.result === true) {
+            filtered_content = verify_result.matched;
             response = ' Filtered.\n';
         }
 
         put(`${wAIfu.character.char_name}:${displayed}`);
-        exposeCaptions(displayed);
 
         /** Send output via websocket */
         if (ws !== null && ws.readyState === ws.OPEN) {
@@ -383,11 +384,12 @@ async function main(): Promise<void> {
             wAIfu.dialog_transcript += new_memory;
             if (is_chat) /** Adds memory to chat user database, see ../UserData/data/chat_user_db.csv */
                 addChatMemory(pseudo, new_memory);
+        } else {
+            displayed = ' Filtered.'
         }
 
         /** Speaks the response */
         await sendToTTS(displayed);
-        exposeCaptions('');
         continue;
     }
 }
@@ -401,6 +403,11 @@ async function init(): Promise<void> {
 
     if (await shouldUpdate() === true) {
         await update();
+    }
+
+    if (fs.existsSync('./ffmpeg/ffmpeg.exe') === false) {
+        errPut('Could not find ffmpeg. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead:\nhttps://github.com/wAIfu-DEV/w-AI-fu/releases\n')
+        closeProgram(ErrorCode.Critical);
     }
 
     put('Loading config informations ...\n');
@@ -554,7 +561,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
     /** Needed for some obscure reason
     *   Because I can't seem to figure out how to initialize the damn
     *    thing from the python script. */
-    if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
+    /*if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
         if (wAIfu.config.twitch_channel_name === '') {
             errPut('Critical Error: Could not initialize the Twitch Chat Reader as the provided twitch channel name is empty.\n');
             closeProgram(ErrorCode.InvalidValue);
@@ -568,13 +575,11 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
             body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
         }).catch((e: any) => {
             if (e.errno !== undefined && e.errno === 'ECONNRESET') {
-                /** I know this is basically a war crime but the error is going
-                 * to happen either way weither I want it or not :3 */
                 debug('Error: There was an error with the fetch request to /run\n');
             }
         });
         wAIfu.chat_reader_initialized = true;
-    }
+    }*/
 
     /** If is timeout, read twitch chat */
     if (result === null && wAIfu.live_chat) {
@@ -630,7 +635,7 @@ async function getChatOrNothing(): Promise<{message:string,name:string}> {
     else {
         debug('Successfuly got new message.\n');
         wAIfu.last_chat_msg = chatmsg.message;
-        return { message: chatmsg.message, name: chatmsg.user };
+        return { message: chatmsg.message, name: chatmsg.name };
     }
 }
 
@@ -645,7 +650,9 @@ function getPackage() {
 }
 
 function getBadWords() {
-    const fcontent = fs.readFileSync('./bad_words/bad_words_b64').toString();
+    if (wAIfu.config.filter_bad_words === false) return [];
+
+    let fcontent = fs.readFileSync('./bad_words/bad_words_b64').toString();
     const buff = Buffer.from(fcontent, 'base64');
     const tostr = buff.toString('utf-8');
     return tostr.split(/\r\n|\n/g).map((v) => { return v.toLowerCase() });
@@ -741,7 +748,15 @@ async function startLiveChat() {
 
     const OAUTH = getAuth('twitch_oauth');
 
-    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH }, detached: DEBUGMODE, shell: DEBUGMODE });
+    if (fs.existsSync('./twitch/loaded.txt') === true) {
+        fs.unlinkSync('./twitch/loaded.txt');
+    }
+
+    if (fs.existsSync('./twitch/msg.txt') === true) {
+        fs.unlinkSync('./twitch/msg.txt');
+    }
+
+    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH, CHANNEL: wAIfu.config.twitch_channel_name }, detached: DEBUGMODE, shell: DEBUGMODE });
     
     readPythonStdOut(CHAT, 'CHAT');
     readPythonStdErr(CHAT, 'CHAT');
@@ -770,7 +785,8 @@ async function sendToLLM(prompt: string): Promise<string> {
         prompt,
         (wAIfu.character.craziness !== undefined) ? wAIfu.character.craziness : 0.5,
         (wAIfu.character.creativity !== undefined) ? wAIfu.character.creativity : 0.5,
-        (wAIfu.character.max_output_length !== undefined) ? wAIfu.character.max_output_length : 120
+        (wAIfu.character.max_output_length !== undefined) ? wAIfu.character.max_output_length : 120,
+        (wAIfu.config.use_clio_model !== undefined) ? wAIfu.config.use_clio_model : false
     ] });
     debug('sending: ' + payload + '\n');
 
@@ -830,6 +846,11 @@ async function handleCommand(command: string): Promise<string|null> {
     switch (com) {
         case '!say': {
             await sendToTTS(command.substring('!say '.length, undefined));
+            return null;
+        }
+        case '!testvoice': {
+            let voice = command.substring('!testvoice '.length, undefined).split('###')[0];
+            await sendToTTS(command.substring('!testvoice '.length + voice.length + '###'.length, undefined), voice);
             return null;
         }
         case '!reset': {
@@ -954,7 +975,7 @@ async function handleCommand(command: string): Promise<string|null> {
  * @returns safe, warm, sanitized text
  */
 function sanitizeText(text: string): string {
-    return text.replaceAll(/[^a-zA-Z .,?!1-9]/g, '');
+    return text.replaceAll(/[^a-zA-Z .,?!0-9\+\-\%\*\/]/g, '');
 }
 
 /**
@@ -962,23 +983,25 @@ function sanitizeText(text: string): string {
  * @param text content to be verified
  * @returns true if found instance of bad word, false if passed
  */
-function verifyText(text: string): boolean {
+function verifyText(text: string): {result:boolean,matched:string} {
     const low_text = text.toLowerCase();
     for (const bw of wAIfu.bad_words) {
         if (low_text.includes(bw)) {
             put('FILTER MATCHED: "' + bw + '" in "' + text + '"\n');
-            return true;
+            return {result: true, matched: bw};
         }
     }
-    return false;
+    return {result: false, matched: ''};
 }
 
 /**
  * Sends LLM output to the TTS generator
  * @param say text spoken by the TTS
  */
-function sendToTTS(say: string): Promise<void> {
+function sendToTTS(say: string, test_voice: string = ''): Promise<void> {
     return new Promise<void>(async(resolve) => {
+
+        exposeCaptions(say);
 
         /** have to make it any because typescript sucks ass */
         let promise_resolved: any = false;
@@ -991,6 +1014,8 @@ function sendToTTS(say: string): Promise<void> {
             ? default_voice
             : wAIfu.character.voice;
 
+        if (test_voice !== '') voice = test_voice;
+
         const payload = JSON.stringify({ data: [say, voice] });
         debug('sending: ' + payload + '\n');
 
@@ -998,7 +1023,8 @@ function sendToTTS(say: string): Promise<void> {
         setTimeout(() => {
             if (promise_resolved === true) return;
             promise_resolved = true;
-            warnPut('Error: Timed out while awaiting for TTS\'s response.');
+            warnPut('Error: Timed out while awaiting for TTS\'s response.\n');
+            exposeCaptions('');
             resolve();
         }, 45_000);
 
@@ -1033,14 +1059,15 @@ function sendToTTS(say: string): Promise<void> {
             warnPut('Error: Could not play TTS because of an error with the NovelAI API.\n');
         }
         promise_resolved = true;
+        exposeCaptions('');
         resolve();
     });
     
 }
 
 /** Retreives the last message from the twich chat, see ./twitch/twitchchat.py */
-async function getLastTwitchChat(): Promise<any> {
-    const get_query = await fetch(CHAT.api_url + '/api').catch((e: any) => {
+async function getLastTwitchChat(): Promise<{message:string,name:string}> {
+    /*const get_query = await fetch(CHAT.api_url + '/api').catch((e: any) => {
         errPut('Critical Error: Could not contact the CHAT subprocess.\n');
         console.log(e);
         closeProgram(ErrorCode.HTTPError);
@@ -1052,8 +1079,16 @@ async function getLastTwitchChat(): Promise<any> {
         closeProgram(ErrorCode.InvalidValue);
     }
     const data = JSON.parse(text);
-    debug('received: ' + JSON.stringify(data) + '\n');
-    return data;
+    debug('received: ' + JSON.stringify(data) + '\n');*/
+
+    let data = { message: '', name: '' };
+
+    if (fs.existsSync('./twitch/msg.txt') == true) {
+        const raw = fs.readFileSync('./twitch/msg.txt', { encoding: 'utf8' });
+        data['name'] = raw.split(';')[0];
+        data['message'] = raw.substring(data['name'].length, undefined);
+    }
+    return data; 
 }
 
 /** Initializes the interface for readline */
@@ -1078,7 +1113,7 @@ function textGet(): Promise<string|null> {
             let resolved: boolean = false;
 
             /** Timeout of n seconds before reading chat message */
-            if (wAIfu.live_chat && wAIfu.started) {
+            if (wAIfu.live_chat) {// && wAIfu.started) {
                 setTimeout(() => {
                     if (resolved) return;
                     debug('Input timeout.\n');
@@ -1120,7 +1155,7 @@ function voiceGet(): Promise<string|null> {
             let text: string|null = null;
             let resolved: boolean = false;
 
-            if (wAIfu.live_chat && wAIfu.started) {
+            if (wAIfu.live_chat) {// && wAIfu.started) {
                 setTimeout(() => {
                     if (resolved) return;
                     resolved = true;
@@ -1165,9 +1200,9 @@ async function monologue(topic: string): Promise<void> {
     let filtered_txt: string|null = null
     const response: string = await sendToLLM(flattenMemory('') + prompt);
     displayed = response;
-    if (verifyText(response) === true) {
-        filtered_txt = response;
-        displayed = ' Filtered.\n';
+    let verify_result = verifyText(response);
+    if (verify_result.result === true) {
+        filtered_txt = verify_result.matched;
     }
     put(`${wAIfu.character.char_name}:${displayed}`);
     exposeCaptions(displayed);
@@ -1178,6 +1213,8 @@ async function monologue(topic: string): Promise<void> {
         const new_memory: string = `${prompt}${displayed}`;
         wAIfu.memory.short_term.push(new_memory);
         wAIfu.dialog_transcript += new_memory;
+    } else {
+        displayed = ' Filtered.'
     }
     await sendToTTS(displayed);
     exposeCaptions('');
@@ -1378,6 +1415,7 @@ function awaitProcessLoaded(proc: SubProc, proc_name: string): Promise<void> {
     return new Promise<void>(
         (resolve) => {
             let loaded = false;
+            let is_chat_proc = (proc_name === 'CHAT');
 
             const timeout = () => {
                 if (loaded) return;
@@ -1391,10 +1429,21 @@ function awaitProcessLoaded(proc: SubProc, proc_name: string): Promise<void> {
             const checkloaded = async () => {
                 if (loaded) return;
                 try {
-                    const r = await fetch(proc.api_url + '/loaded');
-                    loaded = true;
-                    resolve();
-                    return;
+                    if (is_chat_proc === false) {
+                        const r = await fetch(proc.api_url + '/loaded');
+                        loaded = true;
+                        resolve();
+                        return;
+                    } else {
+                        if (fs.existsSync('./twitch/loaded.txt') === true) {
+                            loaded = true;
+                            fs.unlinkSync('./twitch/loaded.txt');
+                            resolve();
+                            return;
+                        } else {
+                            setTimeout(checkloaded, 500);
+                        }
+                    }
                 } catch(e) {
                     setTimeout(checkloaded, 500);
                 }             

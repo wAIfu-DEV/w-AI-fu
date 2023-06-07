@@ -1,6 +1,6 @@
 aiohttp==3.8.4
 Flask[async]==2.2.3
-novelai_api==0.11.6
+novelai_api==0.16.2
 PyAudio==0.2.13
 pydub==0.25.1
 SpeechRecognition==3.10.0

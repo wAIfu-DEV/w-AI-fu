@@ -84,7 +84,12 @@ def play_tts():
     interrupt_next = False
     # Convert .mp3 to .wav
     path = os.path.abspath('../ffmpeg/ffmpeg.exe')
+
+    if not os.path.isfile(path):
+        print(f'Could not find ffmpeg at {path}. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead: https://github.com/wAIfu-DEV/w-AI-fu/releases', file=sys.stderr)
+    
     os.system(f'"{path}" -loglevel quiet -y -i tts.mp3 tts.wav')
+
     # Open the wave file
     wave_file = wave.open('tts.wav', 'rb')
     # Open a stream for capturing audio from the virtual audio cable
