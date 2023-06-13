@@ -34,30 +34,27 @@ body::-webkit-scrollbar {
 }
 
 Header {
-    margin: 1rem;
     display: flex;
     flex-direction: row;
-    align-items: center;
-    padding: .75rem;
-    border: solid 1px rgb(50, 60, 70);
-    border-radius: 1rem;
-    background-color: rgb(20, 25, 30);
-    box-shadow: rgba(0, 0, 0, 0.35) 0rem .5rem .5rem;
+    align-items: last baseline;
+    padding: 1rem;
+    padding-top: 1.5rem;
+    border-bottom: solid 1px rgb(50, 60, 70);
 }
 
 Header > img {
     height: 2rem;
     aspect-ratio: 1 / 1;
-    margin-right: 1.5rem;
+    margin-right: .75rem;
     border-radius: .5rem;
 }
 
 Header > h1 {
-    flex-grow: 1;
-    font-weight: 100;    
+    font-weight: 600;
 }
 
 VersionString {
+    margin-left: .75rem;
     color: rgb(50, 60, 70);
 }
 

@@ -11,7 +11,7 @@
 <body>
     <Header>
         <img src="../icon.ico">
-        <h1>w-AI-fu ▸ Control Panel</h1>
+        <h1>w-AI-fu</h1>
         <VersionString></VersionString>
     </Header>
     <Section>
@@ -42,15 +42,18 @@
                 <ConsoleCommandButton class="BigRedButton" title="Prevents the character from speaking any further and blanks out the captions." onclick="interrupt()">
                     Interrupt
                 </ConsoleCommandButton>
+                <ConsoleCommandButton id="consolebut-pause" title="Pauses the program until pressed again.">
+                    Pause
+                </ConsoleCommandButton>
                 <ConsoleCommandButton title="Factory-reset the memory of the character" onclick="clearConsole();sendCommand('!reset')">
                     Reset
                 </ConsoleCommandButton>
                 <!--<ConsoleCommandButton title="Print additional informations for debugging" onclick="sendCommand('!debug')">
                     Debug
-                </ConsoleCommandButton>-->
+                </ConsoleCommandButton>
                 <ConsoleCommandButton title="Saves the current chat history to UserData/saved/" onclick="sendCommand('!save')">
                     Save
-                </ConsoleCommandButton>
+                </ConsoleCommandButton>-->
             </ConsoleCommands>
         </Console>
     </Section>
@@ -73,17 +76,17 @@
                     <FlipFlop flip="off" flop="on" value="off" config="monologue">off</FlipFlop>
                 </ConfigLine>
                 <Spacer></Spacer>
-                <ConfigLine title="Makes the character repeat everything you say or type">
-                    <Label>Parrot Mode</Label>
-                    <FlipFlop flip="off" flop="on" value="off" config="parrot_mode">off</FlipFlop>
+                <ConfigLine title="Percentage of chance for a monologue to trigger.">
+                    <Label>Monologue Chance %</Label>
+                    <input class="NumberInputBox" inputmode="numeric" value="50" config="monologue_chance">
                 </ConfigLine>
             </Config>
             <Config>
-                <ConfigLine>
+                <ConfigLine style="display: none;">
                     <Label>TTS Provider</Label>
                     <FlipFlop flip="NovelAI" flop="Play.ht" value="NovelAI" config="tts_use_playht" standalone>NovelAI</FlipFlop>
                 </ConfigLine>
-                <Spacer></Spacer>
+                <Spacer style="display: none;"></Spacer>
                 <ConfigLine title="Will start reading Twitch chats if user does not interact with for n seconds and 'Read Twitch Chat' is on">
                     <Label>Read chat after n seconds</Label>
                     <input class="NumberInputBox" inputmode="numeric" value="2" config="chat_read_timeout_sec">
@@ -93,13 +96,33 @@
                     <Label>Filter Bad Words</Label>
                     <FlipFlop flip="on" flop="off" value="on" config="filter_bad_words">on</FlipFlop>
                 </ConfigLine>
+                <Spacer></Spacer>
+                <ConfigLine title="Makes the character repeat everything you say or type">
+                    <Label>Parrot Mode</Label>
+                    <FlipFlop flip="off" flop="on" value="off" config="parrot_mode">off</FlipFlop>
+                </ConfigLine>
             </Config>
         </ConfigWrapper>
         <ConfigLong>
-            <ConfigLine title="">
-                <Label>Output Audio Device</Label>
+            <ConfigLine style="display: block;" title="List of chatters the AI will not respond to. Useful if your channel makes use of Bots.">
+                <Label>Blacklisted chatters (comma delimited)</Label>
+                <InputField id="chatter-blacklist" contenteditable="true"></InputField>
+            </ConfigLine>
+        </ConfigLong>
+        <Spacer></Spacer>
+        <ConfigLong>
+            <ConfigLine title="Which audio device to use for the TTS, or vocals of a song.">
+                <Label>Voice Audio Device</Label>
                 <select id="audio-device"></select>
                 <AudioTestButton id="test-audio">Test</AudioTestButton>
+            </ConfigLine>
+        </ConfigLong>
+        <Spacer></Spacer>
+        <ConfigLong>
+            <ConfigLine title="Which audio device to use for other sounds, or instrumentals of a song.">
+                <Label>Other Audio Device</Label>
+                <select id="audio-device-other"></select>
+                <AudioTestButton id="test-audio-other">Test</AudioTestButton>
             </ConfigLine>
         </ConfigLong>
         <ConfigLong>
@@ -128,13 +151,13 @@
                 <AudioTestButton id="test-voice">Test</AudioTestButton>
             </InputLine>
             <Spacer></Spacer>
-            <Label>Craziness</Label>
+            <Label>Craziness (repetition penalty)</Label>
             <RangeLine>
                 <input type="range" min="0" max="1" value="0.5" class="slider" step="0.01" id="craziness">
                 <Label id="craziness-label">0.5</Label>
             </RangeLine>
             <Spacer></Spacer>
-            <Label>Creativity</Label>
+            <Label>Creativity (temperature)</Label>
             <RangeLine>
                 <input type="range" min="0" max="1" value="0.5" class="slider" step="0.01" id="creativity">
                 <Label id="creativity-label">0.5</Label>
@@ -176,13 +199,13 @@
                 <Label>(OPTIONAL) Twitch OAuth Token</Label>
                 <input id="twitch-oauth" class="TextInputBox" type="password" value="" auth>
             </ConfigLine>
-            <Spacer></Spacer>
-            <ConfigLine>
+            <Spacer style="display: none;"></Spacer>
+            <ConfigLine style="display: none;">
                 <Label>(OPTIONAL) Play.ht Auth Token</Label>
                 <input id="playht-auth" class="TextInputBox" type="password" value="" auth>
             </ConfigLine>
-            <Spacer></Spacer>
-            <ConfigLine>
+            <Spacer style="display: none;"></Spacer>
+            <ConfigLine style="display: none;">
                 <Label>(OPTIONAL) Play.ht User Token</Label>
                 <input id="playht-user" class="TextInputBox" type="password" value="" auth>
             </ConfigLine>

@@ -1,1 +1,19 @@
-{"character_name":"Hilda","user_name":"USER","is_voice_input":false,"parrot_mode":false,"read_live_chat":false,"monologue":false,"tts_use_playht":false,"chat_read_timeout_sec":3,"twitch_channel_name":"","filter_bad_words":true,"use_clio_model":false,"audio_device":-1}
+{
+    "character_name": "Hilda",
+    "user_name": "USER",
+    "is_voice_input": false,
+    "parrot_mode": false,
+    "read_live_chat": false,
+    "monologue": false,
+    "tts_use_playht": false,
+    "chat_read_timeout_sec": 3,
+    "twitch_channel_name": "",
+    "filter_bad_words": true,
+    "audio_device": -1,
+    "audio_device_other": -1,
+    "use_clio_model": false,
+    "monologue_chance": 100,
+    "chatter_blacklist": [
+        "test"
+    ]
+}

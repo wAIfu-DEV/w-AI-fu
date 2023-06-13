@@ -43,7 +43,8 @@ def launch_ws():
                                 on_error=on_error,
                                 on_close=on_close
                                 )
-    ws.run_forever()
+    ws.run_forever(reconnect=5)
+    raise Exception('Critical Error: Lost connection to Twitch API WebSocket.')
 
 
 def parse_message(message):
@@ -58,7 +59,7 @@ def parse_message(message):
 
 def on_message(ws, message):
     global started, last_msg, last_usr
-    print(message)
+    #print(message)
     if 'PING' in message:
         ws.send('PONG')
         return

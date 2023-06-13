@@ -129,10 +129,22 @@ async function handleSocketMessage(data) {
             ws.dispatchEvent(new CustomEvent('latest', {detail: JSON.parse(payload)}));
             return;
         }
-        default: 
+        default:
             return;
     };
 }
+
+DOM.getId('consolebut-pause').self(ref => {
+    ref.on('click', () => {
+        ws.send('PAUSE');
+
+        if (ref.element.classList.contains('BigRedButton')) {
+            ref.element.classList.remove('BigRedButton');
+        } else {
+            ref.element.classList.add('BigRedButton');
+        }
+    });
+});
 
 DOM.query('ConsoleInputField').on('keydown', (ke) => {
     if (ke.code !== 'Enter') return;
@@ -183,7 +195,13 @@ DOM.getId('randomize-voice-seed').self((ref) => {
 
 DOM.getId('test-audio').self((ref) => {
     ref.on('click', () => {
-        sendCommand('!say This is a test.');
+        sendCommand('!testaudio ' + Number(audio_devices[DOM.getId('audio-device').get('value')]) + '###This is a test.');
+    });
+});
+
+DOM.getId('test-audio-other').self((ref) => {
+    ref.on('click', () => {
+        sendCommand('!testaudio ' + Number(audio_devices[DOM.getId('audio-device-other').get('value')]) + '###This is a test.');
     });
 });
 
@@ -205,28 +223,28 @@ DOM.getId('test-voice').self((ref) => {
 DOM.query('CharacterSaveButton').on('click', async() => {
     const new_chara = {
         "char_name": DOM.getId('char_name').get('textContent'),
-        "char_persona": DOM.getId('char_desc').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<.*?\>/g, ''),
-        "example_dialogue": DOM.getId('char_exd').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<.*?\>/g, ''),
+        "char_persona": DOM.getId('char_desc').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<\/.*?\>/g, '\n').replaceAll(/\<.*?\>/g, '').replaceAll(/&[^ \n\t]+?;/g, '').replaceAll(/\n+/g, '\n'),
+        "example_dialogue": DOM.getId('char_exd').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<\/.*?\>/g, '\n').replaceAll(/\<.*?\>/g, '').replaceAll(/&[^ \n\t]+?;/g, '').replaceAll(/\n+/g, '\n'),
         "voice": DOM.getId('char_voice').get('textContent'),
         "topics": DOM.getId('char_topics').get('textContent').split(/, |,/g).filter((v) => v !== undefined && v !== ''),
         "craziness": Number(DOM.getId('craziness').get('value')),
-        "creativity": Number(DOM.getId('creativity').get('value')),
-        "max_output_length": Number(DOM.getId('output-length').get('value'))
+        "creativity": Number(DOM.getId('creativity').get('value'))
     };
     ws.send('CHARA ' + JSON.stringify(new_chara));
-    await setConfig('character_name', new_chara.char_name);
+    setConfig('character_name', new_chara.char_name);
     await getLatest();
 });
 
 DOM.query('CharacterDownloadButton').on('click', () => {
     const new_chara = {
         "char_name": DOM.getId('char_name').get('textContent'), 
-        "char_persona": DOM.getId('char_desc').get('innerHTML').replaceAll('<br>', '\n'),
-        "example_dialogue": DOM.getId('char_exd').get('innerHTML').replaceAll('<br>', '\n'),
+        "char_persona": DOM.getId('char_desc').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<\/.*?\>/g, '\n').replaceAll(/\<.*?\>/g, '').replaceAll(/&[^ \n\t]+?;/g, '').replaceAll(/\n+/g, '\n'),
+        "example_dialogue": DOM.getId('char_exd').get('innerHTML').replaceAll('<br>', '\n').replaceAll(/\<\/.*?\>/g, '\n').replaceAll(/\<.*?\>/g, '').replaceAll(/&[^ \n\t]+?;/g, '').replaceAll(/\n+/g, '\n'),
         "voice": DOM.getId('char_voice').get('textContent'),
         "topics": DOM.getId('char_topics').get('textContent').split(/, |,/g).filter((v) => v !== undefined && v !== ''),
         "craziness": Number(DOM.getId('craziness').get('value')),
-        "creativity": Number(DOM.getId('creativity').get('value'))
+        "creativity": Number(DOM.getId('creativity').get('value')),
+        "max_output_length": Number(DOM.getId('output-length').get('value'))
     };
     download(new_chara.char_name + '.json', JSON.stringify(new_chara));
 });
@@ -248,6 +266,12 @@ DOM.getId('twitch-name').self((ref) => {
 DOM.getId('audio-device').self((ref) => {
     ref.on('change', () => {
         setConfig('audio_device', Number(audio_devices[ref.get('value')]));
+    });
+});
+
+DOM.getId('audio-device-other').self((ref) => {
+    ref.on('change', () => {
+        setConfig('audio_device_other', Number(audio_devices[ref.get('value')]));
     });
 });
 
@@ -275,7 +299,19 @@ DOM.query('DisplayAuthButton').self((ref) => {
 
 DOM.query('ConfigSaveButton').self(ref => {
     ref.on('click', () => {
+        setConfig('chatter_blacklist', String(DOM.getId('chatter-blacklist').get('textContent'))
+                                        .split(',')
+                                        .map(value => value.trim())
+                                        .filter(value => (value === '' || value === undefined) === false));
+        
         ws.send('CONFIG ' + JSON.stringify(config));
+    });
+});
+
+DOM.query('input[config="monologue_chance"]').self(ref => {
+    ref.on('change', () => {
+        if (ref.get('value') === '') return;
+        setConfig(ref.element.getAttribute('config'), Number(ref.get('value')));
     });
 });
 
@@ -382,7 +418,7 @@ function addFilteredBubble(filtered, text) {
                     <p class="short-p">${filtered.trim()}</p> in
                 </span>
                 <p>${text.trim()}</p>
-                <FilteredOptionsButton onclick="sendCommand(\'!say ${text.trim().replaceAll(/[^a-zA-Z,.!? 0-9]/g, '')}\');">
+                <FilteredOptionsButton onclick="ws.send('INTERRUPT');sendCommand(\'!say ${text.trim().replaceAll(/[^a-zA-Z,.!? 0-9]/g, '')}\');">
                     Unfilter
                 </FilteredOptionsButton>
             </ConsoleBubbleFiltered>
@@ -491,6 +527,22 @@ function setLatestData() {
             p.innerHTML = `<option>${s}</option>` + p.innerHTML 
         }
     }
+    const q = document.getElementById('audio-device-other');
+    for(let s in audio_devices) {
+        if (config.audio_device_other === -1 && s === 'default') {
+            q.innerHTML = `<option>${audio_devices[s]}</option>` + q.innerHTML 
+        } else if (audio_devices[s] !== config.audio_device_other) {
+            q.innerHTML += `<option>${s}</option>`;
+        } else  {
+            q.innerHTML = `<option>${s}</option>` + q.innerHTML 
+        }
+    }
+    const r = document.getElementById('chatter-blacklist');
+    for(let val of config.chatter_blacklist) {
+        r.textContent += val + ', '
+    }
+    const s = document.querySelector('input[config="monologue_chance"]');
+    s.value = config.monologue_chance;
 }
 
 function flipFlipFlop(element) {

@@ -16,11 +16,11 @@
         "pizza",
         "DEV",
         "CHAT",
+        "jokes",
+        "how she is so much better than humans",
         "food",
-        "sports",
         "nerds",
         "something interesting about her",
-        "the planet gzurhgorg",
         "streaming",
         "life",
         "CHAT's lack of brains",
@@ -31,9 +31,10 @@
         "nothing in particular",
         "random stuff",
         "fun facts",
-        "human nature"
+        "human nature",
+        "CHAT needs to give her money"
     ],
-    "craziness": 0.45,
-    "creativity": 0.5,
+    "craziness": 0.5,
+    "creativity": 0.55,
     "max_output_length": 120
 }

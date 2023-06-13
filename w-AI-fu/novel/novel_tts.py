@@ -44,7 +44,7 @@ async def api():
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 500 
 
-    if play_tts() == True:
+    if play_tts(test_device=data['data'][2]) == True:
         response = jsonify({'message': 'OK'})
         response.headers.add("Access-Control-Allow-Origin", "*")
         return response, 200
@@ -79,8 +79,8 @@ def list_devices():
         info = p.get_device_info_by_index(i)
         print("Device {} = {}".format(info["index"], info["name"]))
 
-def play_tts():
-    global audio, interrupt_next
+def play_tts(test_device = None):
+    global audio, interrupt_next, device_index
     interrupt_next = False
     # Convert .mp3 to .wav
     path = os.path.abspath('../ffmpeg/ffmpeg.exe')
@@ -89,6 +89,10 @@ def play_tts():
         print(f'Could not find ffmpeg at {path}. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead: https://github.com/wAIfu-DEV/w-AI-fu/releases', file=sys.stderr)
     
     os.system(f'"{path}" -loglevel quiet -y -i tts.mp3 tts.wav')
+
+    final_device = device_index
+    if test_device != None:
+        final_device = test_device
 
     # Open the wave file
     wave_file = wave.open('tts.wav', 'rb')
@@ -99,7 +103,7 @@ def play_tts():
                                         channels=wave_file.getnchannels(),
                                         rate=wave_file.getframerate(),
                                         output=True,
-                                        output_device_index=device_index) # Set the input device index to the virtual audio cable
+                                        output_device_index=final_device) # Set the input device index to the virtual audio cable
     except Exception as e:
         print('Cannot use selected audio device as output audio device.', file=sys.stderr)
         wave_file.close()

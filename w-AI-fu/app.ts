@@ -10,7 +10,7 @@ const DEBUGMODE: boolean = false;
         Core of the application,
         Responible for IO logic, management of python subprocesses,
             and com with the webui.
-    
+
     Entry Point: main()
 
     TODO: Maube split this up in multiple module files, this is getting to the 
@@ -26,13 +26,12 @@ import extract from 'extract-zip';
 import * as readline from 'readline/promises';
 import * as path from 'path';
 
-const readline_interface = readline.createInterface(process.stdin, process.stdout);
+const readline_interface: readline.Interface = readline.createInterface(process.stdin, process.stdout);
 
 const HOST_PATH: string = '127.0.0.1';
 const PORT_WSS: number = 7870;
 const PORT_LLM: number = 7840;
 const PORT_TTS: number = 7850;
-const PORT_CHAT: number = 7830;
 
 enum ErrorCode {
     None,
@@ -56,9 +55,9 @@ wss.on('connection', (socket: WebSocket) => {
  * Handles webui messages received from websocket.
  * @param data raw message data
  */
-async function handleSocketMessage(data: any): Promise<void> {
+async function handleSocketMessage(data: unknown): Promise<void> {
     const message: string = String(data);
-    let type: string = message.split(' ')[0];
+    let type: string|undefined = message.split(' ')[0];
     if (type === undefined) type = message;
     const payload: string = (type.length !== message.length)
                             ? message.substring(type.length + 1, undefined)
@@ -90,7 +89,11 @@ async function handleSocketMessage(data: any): Promise<void> {
         case 'INTERRUPT':
             wsINTERRUPT();
             return;
+        case 'PAUSE':
+            wsPAUSE();
+            return;
         default:
+            warnPut('Error: Could not handle socket message.\n');
             return;
     };
 }
@@ -109,6 +112,12 @@ function wsINTERRUPT(): void {
     });
 }
 
+function wsPAUSE(): void {
+    wAIfu.is_paused = !wAIfu.is_paused;
+    if (wAIfu.is_paused === true)
+        wsINTERRUPT();
+}
+
 /** Sends the initial data to the webui */
 function wsLATEST(): void {
     ws!.send('LATEST ' + JSON.stringify({
@@ -122,14 +131,32 @@ function wsLATEST(): void {
 
 /** Handles config changes from the webui */
 function wsCONFIG(data: string): void {
-    const obj = JSON.parse(data);
+    const obj: unknown = JSON.parse(data);
+
+    if (obj === undefined || obj === null || typeof obj !== "object") {
+        warnPut('Error: Got invalid config object from WebUI.\n');
+        return;
+    }
+    if ("character_name" in obj === false) {
+        warnPut('Error: Missing field "character_name" from the config object sent by WebUI.\n');
+        return;
+    }
     
-    if (wAIfu.config.character_name !== obj.character_name) {
+    if ("character_name" in obj
+        && typeof obj.character_name === "string"
+        && wAIfu.config.character_name !== obj.character_name)
+    {
         wAIfu.config.character_name = obj.character_name;
         wAIfu.character = getCharacter();
     }
     
-    wAIfu.config = obj;
+    // TODO: Fix this shit
+    if (isOfClass(obj, wAIfu.config)) {
+        wAIfu.config = obj as Config;
+    } else {
+        warnPut('Error: config object received from WebUI is missing fields.\n');
+        return;
+    }
     fs.writeFileSync('../config.json', data);
 
     wAIfu.should_reload = true;
@@ -167,6 +194,8 @@ function wsCHARA(data: string): void {
     wAIfu.config.character_name = obj.char_name;
     wAIfu.character = obj;
     fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
+    fs.writeFileSync('../config.json', JSON.stringify(wAIfu.config));
+    wAIfu.should_reload = true;
 }
 
 /** Handles change of audio device from webui */
@@ -212,12 +241,16 @@ class Config {
     chat_read_timeout_sec: number = 2;
     /** Weither you want to filter out bad stuff, highly recommended if you plan on streaming with it */
     filter_bad_words: boolean = true;
-    /** Index of the selected audio device, -1 uses the default audio device */
-    audio_device: number = -1;
-    /**  */
-    mic_sensitivity: number = 0.5;
     /** Weither to use the NovelAI Clio model instead of Euterpez */
     use_clio_model: boolean = false
+    /** Index of the selected audio device, -1 uses the default audio device */
+    audio_device: number = -1;
+    /** Index of the selected audio device, -1 uses the default audio device */
+    audio_device_other: number = -1;
+    /** Percentage of chance to trigger monologue after input timeout */
+    monologue_chance: number = 50;
+    /** Chatters the program should not read messages from */
+    chatter_blacklist: string[] = [];
 }
 
 /** see ../UserData/characters/*.json */
@@ -246,8 +279,6 @@ class Memory {
 
 /** Global state of the application */
 class wAIfuApp {
-    /** Weither the application has finished initializing */
-    started: boolean = false;
     /** Weither the application is in debug mode (similar to DEBUGMODE I have no idea why it's duplicated :3 ) */
     is_debug: boolean = false;
     /** Weither the application is currently reading chat messages */
@@ -269,11 +300,12 @@ class wAIfuApp {
     character: Character = new Character();
     memory: Memory = new Memory();
     /** Dictionnary of available audio devices */
-    audio_devices: any = {};
+    audio_devices: unknown = {};
     /** Keeps track of number of reloads */
     init_cycle: number = 0;
     /** Weither to reload on next input loop */
     should_reload: boolean = false;
+    is_paused: boolean = false;
 }
 /** Singleton of the application's state */
 const wAIfu: wAIfuApp = new wAIfuApp();
@@ -312,6 +344,14 @@ async function main(): Promise<void> {
     await init();
 
     main_loop: while (true) {
+
+        if (wAIfu.is_paused === true) {
+            /** 500ms timer so that we don't fry the CPU */
+            await new Promise<void>(
+                (resolve) => setTimeout(() => resolve(), 500));
+            continue main_loop;
+        }
+
         /** Input from the user (or twitch chat) */
         const inputObj = await getInput(wAIfu.input_mode);
         if (inputObj === null) continue main_loop;
@@ -345,12 +385,23 @@ async function main(): Promise<void> {
                                    ? `[CHAT] ${pseudo}`
                                    : sender;
         /** Memory placed between Long-term and Short-term memory */
-        let additional_memories: string = (is_chat)
-                                          ? ''
-                                          : getChatMemories(pseudo);
+        let additional_memories: string = '' // Might be changed in later updates
         /** Final prompt before merge with memory */
         let prompt: string = `${identifier}: ${handled}\n${wAIfu.character.char_name}:`;
-        let response: string = await sendToLLM(flattenMemory(additional_memories) + prompt);
+        let response: string|null = await sendToLLM(flattenMemory(additional_memories) + prompt);
+
+        if (response === null) {
+            await handleCommand('!reload');
+            continue main_loop;
+        }
+
+        //@ts-ignore   Typescript can be such a pain in the ass to work with sometimes
+        if (wAIfu.is_paused === true) {
+            /** 500ms timer so that we don't fry the CPU */
+            await new Promise<void>(
+                (resolve) => setTimeout(() => resolve(), 500));
+            continue main_loop;
+        }
 
         /** String that will eventually be displayed in console, spoken by TTS */
         let displayed: string = (is_chat)
@@ -382,14 +433,15 @@ async function main(): Promise<void> {
 
             wAIfu.memory.short_term.push(new_memory);
             wAIfu.dialog_transcript += new_memory;
-            if (is_chat) /** Adds memory to chat user database, see ../UserData/data/chat_user_db.csv */
-                addChatMemory(pseudo, new_memory);
         } else {
             displayed = ' Filtered.'
         }
 
         /** Speaks the response */
-        await sendToTTS(displayed);
+        const tts_response = await sendToTTS(displayed);
+        if (tts_response === null) {
+            await reinit();
+        }
         continue;
     }
 }
@@ -406,7 +458,7 @@ async function init(): Promise<void> {
     }
 
     if (fs.existsSync('./ffmpeg/ffmpeg.exe') === false) {
-        errPut('Could not find ffmpeg. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead:\nhttps://github.com/wAIfu-DEV/w-AI-fu/releases\n')
+        errPut('Critical Error: Could not find ffmpeg. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead:\nhttps://github.com/wAIfu-DEV/w-AI-fu/releases\n')
         closeProgram(ErrorCode.Critical);
     }
 
@@ -556,38 +608,13 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
         return null;
     }
 
-    wAIfu.started = true; // Prevents input timeout on first input
-
-    /** Needed for some obscure reason
-    *   Because I can't seem to figure out how to initialize the damn
-    *    thing from the python script. */
-    /*if (wAIfu.chat_reader_initialized === false && (wAIfu.live_chat === true)) {
-        if (wAIfu.config.twitch_channel_name === '') {
-            errPut('Critical Error: Could not initialize the Twitch Chat Reader as the provided twitch channel name is empty.\n');
-            closeProgram(ErrorCode.InvalidValue);
-        }
-        debug('initializing Twitch Chat Reader.\n');
-        fetch(CHAT.api_url + '/run', {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ data: [wAIfu.config.twitch_channel_name] })
-        }).catch((e: any) => {
-            if (e.errno !== undefined && e.errno === 'ECONNRESET') {
-                debug('Error: There was an error with the fetch request to /run\n');
-            }
-        });
-        wAIfu.chat_reader_initialized = true;
-    }*/
-
     /** If is timeout, read twitch chat */
     if (result === null && wAIfu.live_chat) {
         const { message, name } = await getChatOrNothing();
 
         /** got no new message, start ranting about a topic of interest */
         is_mono: if (wAIfu.config.monologue === true && message === '' && name === '') {
-            //if (Math.random() < 1/2) {
+            if (Math.random() < wAIfu.config.monologue_chance * 0.01) {
                 if (wAIfu.character.topics.length <= 0) break is_mono;
 
                 let rdm = Math.random();
@@ -597,7 +624,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
                     closeProgram(1);
                 }
                 return { input: `!mono ${topic}`, sender: 'USER', pseudo: '' };
-            //}
+            }
         }
 
         result = message;
@@ -618,7 +645,7 @@ async function getInput(mode: InputMode): Promise<{input:string,sender:string,ps
 async function getChatOrNothing(): Promise<{message:string,name:string}> {
     // If can't read chat messages
     if (wAIfu.live_chat === false) {
-        debug('Returned empty msg because wAIfu.live_chat is false.\n')
+        debug('Returned empty msg because wAIfu.live_chat is false.\n');
         return { message: '', name: '' };
     }
     // Get latest twitch chat message
@@ -627,12 +654,16 @@ async function getChatOrNothing(): Promise<{message:string,name:string}> {
     /** Uses regex to strip the text of any unwanted chars */
     chatmsg.message = sanitizeText(chatmsg.message);
 
+    if (chatmsg.name !== '' && wAIfu.config.chatter_blacklist.indexOf(chatmsg.name) !== -1) {
+        debug(`Skipped message from blacklisted chatter.\n`);
+        return { message: '', name: '' };
+    }
+
     /** If same message, skip */
     if (wAIfu.last_chat_msg === chatmsg.message) {
         debug(`Skipped message because is same than previous one: ${wAIfu.last_chat_msg}\n`);
         return { message: '', name: '' };
-    }
-    else {
+    } else {
         debug('Successfuly got new message.\n');
         wAIfu.last_chat_msg = chatmsg.message;
         return { message: chatmsg.message, name: chatmsg.name };
@@ -641,7 +672,24 @@ async function getChatOrNothing(): Promise<{message:string,name:string}> {
 
 function getConfig() {
     const buff = fs.readFileSync('../config.json');
-    return JSON.parse(buff.toString());
+    const obj = JSON.parse(buff.toString());
+    return checkConfigFields(obj);
+}
+
+function checkConfigFields(obj: any): any {
+    let was_modified = false;
+    if (isOfClass(obj, wAIfu.config) === false) {
+        for(let key of Object.keys(wAIfu.config)) {
+            if (key in obj === false) {
+                obj[key] = (wAIfu.config as any)[key]
+                was_modified = true;
+            };
+        }
+    }
+    if (was_modified === true) {
+        fs.writeFileSync('../config.json', JSON.stringify(obj));
+    }
+    return obj;
 }
 
 function getPackage() {
@@ -660,7 +708,24 @@ function getBadWords() {
 
 function getCharacter() {
     const buff = fs.readFileSync(`../UserData/characters/${wAIfu.config.character_name}.json`);
-    return JSON.parse(buff.toString());
+    const char = JSON.parse(buff.toString());
+    return checkCharacterFields(char);
+}
+
+function checkCharacterFields(obj: any): any {
+    let was_modified = false;
+    if (isOfClass(obj, wAIfu.character) === false) {
+        for(let key of Object.keys(wAIfu.character)) {
+            if (key in obj === false) {
+                obj[key] = (wAIfu.character as any)[key]
+                was_modified = true;
+            };
+        }
+    }
+    if (was_modified === true) {
+        fs.writeFileSync(`../UserData/characters/${wAIfu.config.character_name}.json`, JSON.stringify(obj));
+    }
+    return obj;
 }
 
 /**
@@ -779,45 +844,68 @@ async function startSTT() {
  * Send dialog history + prompt to LLM
  * @param prompt final prompt to be read by the LLM, contains character definition, example dialogue, memories.
  */
-async function sendToLLM(prompt: string): Promise<string> {
+function sendToLLM(prompt: string): Promise<string|null> {
+    return new Promise<string|null>(async(resolve) => {
+        let p_resolved: any = false;
 
-    const payload = JSON.stringify({ data: [
-        prompt,
-        (wAIfu.character.craziness !== undefined) ? wAIfu.character.craziness : 0.5,
-        (wAIfu.character.creativity !== undefined) ? wAIfu.character.creativity : 0.5,
-        (wAIfu.character.max_output_length !== undefined) ? wAIfu.character.max_output_length : 120,
-        (wAIfu.config.use_clio_model !== undefined) ? wAIfu.config.use_clio_model : false
-    ] });
-    debug('sending: ' + payload + '\n');
+        const payload = JSON.stringify({ data: [
+            prompt,
+            (wAIfu.character.craziness !== undefined) ? wAIfu.character.craziness : 0.5,
+            (wAIfu.character.creativity !== undefined) ? wAIfu.character.creativity : 0.5,
+            (wAIfu.character.max_output_length !== undefined) ? wAIfu.character.max_output_length : 120,
+            (wAIfu.config.use_clio_model !== undefined) ? wAIfu.config.use_clio_model : false
+        ] });
+        debug('sending: ' + payload + '\n');
 
-    const post_query = await fetch(LLM.api_url + '/api', {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: payload
-    }).catch((e: any) => {
-        errPut('Critical Error: Could not contact the LLM subprocess.\n');
-        console.log(e);
-        closeProgram(ErrorCode.HTTPError);
+        setTimeout(() => {
+            if (p_resolved === true) return;
+            p_resolved = true;
+            warnPut('Error: Timed out while awaiting LLM\'s response.\n');
+            resolve(null);
+            return;
+        }, 45_000);
+    
+        let post_query: Response;
+        try {
+            post_query = await fetch(LLM.api_url + '/api', {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload
+            })
+        } catch(e) {
+            warnPut('Error: Could not contact the LLM subprocess.\n');
+            console.log(e);
+            if (p_resolved === true) return;
+            p_resolved = true;
+            resolve(null);
+            return;
+        }
+
+        const text = await post_query!.text();
+        if (text[0] !== undefined && text[0] !== '{') {
+            warnPut('Error: Received incorrect json from LLM.\n');
+            console.log(text);
+            if (p_resolved === true) return;
+            p_resolved = true;
+            resolve(null);
+            return;
+        }
+        const data = JSON.parse(text);
+        const raw = Buffer.from(data.data[0], 'base64');
+    
+        debug('received: ' + JSON.stringify(
+            { "data": raw.toString('utf-8') }) + '\n');
+    
+        /** Remove anything after a newline character, LLM might try to impersonate USER */
+        let response = raw.toString('utf-8').replace(/\n.*/, '');
+    
+        /** Make sure response ends with \n */
+        if (response.slice(-1) !== '\n')
+            response = response + '\n';
+        p_resolved = true;
+        resolve(response);
+        return;
     });
-    const text = await post_query!.text();
-    if (text[0] !== undefined && text[0] !== '{') {
-        errPut('Critical Error: Received incorrect json from LLM.\n');
-        console.log(text);
-        closeProgram(ErrorCode.InvalidValue);
-    }
-    const data = JSON.parse(text);
-    const raw = Buffer.from(data.data[0], 'base64');
-
-    debug('received: ' + JSON.stringify(
-        { "data": raw.toString('utf-8') }) + '\n');
-
-    /** Remove anything after a newline character, LLM might try to impersonate USER */
-    let response = raw.toString('utf-8').replace(/\n.*/, '');
-
-    /** Make sure response ends with \n */
-    if (response.slice(-1) !== '\n')
-        response = response + '\n';
-    return response;
 }
 
 /**
@@ -845,12 +933,28 @@ async function handleCommand(command: string): Promise<string|null> {
 
     switch (com) {
         case '!say': {
-            await sendToTTS(command.substring('!say '.length, undefined));
+            const tts_response = await sendToTTS(command.substring('!say '.length, undefined));
+            if (tts_response === null) {
+                await handleCommand('!reload');
+            }
             return null;
         }
         case '!testvoice': {
-            let voice = command.substring('!testvoice '.length, undefined).split('###')[0];
-            await sendToTTS(command.substring('!testvoice '.length + voice.length + '###'.length, undefined), voice);
+            let voice: string|undefined = command.substring('!testvoice '.length, undefined).split('###')[0];
+            if (voice === undefined) return null;
+            const tts_response = await sendToTTS(command.substring('!testvoice '.length + voice.length + '###'.length, undefined), voice);
+            if (tts_response === null) {
+                await handleCommand('!reload');
+            }
+            return null;
+        }
+        case '!testaudio': {
+            let device_index: string|undefined = command.substring('!testaudio '.length, undefined).split('###')[0];
+            if (device_index === undefined) return null;
+            const tts_response = await sendToTTS(command.substring('!testaudio '.length + device_index.length + '###'.length, undefined), '', parseInt(device_index));
+            if (tts_response === null) {
+                await handleCommand('!reload');
+            }
             return null;
         }
         case '!reset': {
@@ -901,8 +1005,12 @@ async function handleCommand(command: string): Promise<string|null> {
             }
             let fcontent = fs.readFileSync(fpath_resolved).toString();
             const lines = fcontent.split('-');
-            for (let line of lines)
-                await sendToTTS(line);
+            for (let line of lines) {
+                let tts_response = await sendToTTS(line);
+                if (tts_response === null) {
+                    await handleCommand('!reload');
+                }
+            }
             return null;
         }
         case '!reload': {
@@ -962,6 +1070,40 @@ async function handleCommand(command: string): Promise<string|null> {
             await monologue(topic);
             return null;
         }
+        case '!sing': {
+            const song_name = command.substring('!sing '.length, undefined).trim();
+            const vocals = `../UserData/songs/${song_name}_vocals.wav`;
+            const instrumentals = `../UserData/songs/${song_name}_instrumentals.wav`;
+
+            if (fs.existsSync(vocals) === false) {
+                warnPut('Error: Could not find file: ' + vocals);
+                return null
+            }
+
+            if (fs.existsSync(instrumentals) === false) {
+                warnPut('Error: Could not find file: ' + instrumentals);
+                return null
+            }
+            //let bat = require.resolve('./singing/sing.bat');
+            let player1 = cproc.spawn('python', ['./singing/sing.py', vocals, instrumentals, String(wAIfu.config.audio_device), String(wAIfu.config.audio_device_other)], { cwd: './', detached: DEBUGMODE, shell: DEBUGMODE })
+            let player2 = cproc.spawn('python', ['./singing/sing.py', instrumentals, vocals, String(wAIfu.config.audio_device_other), String(wAIfu.config.audio_device)], { cwd: './', detached: DEBUGMODE, shell: DEBUGMODE })
+            //let player = cproc.spawn('cmd.exe', ['/c', 'sing.bat', '../' + vocals, '../' + instrumentals, String(wAIfu.config.audio_device), String(wAIfu.config.audio_device_other)], { cwd: './singing', detached: DEBUGMODE, shell: DEBUGMODE })
+            //let player = cproc.spawn(bat, ['../' + vocals, '../' + instrumentals, String(wAIfu.config.audio_device), String(wAIfu.config.audio_device_other)], { cwd: './singing', detached: DEBUGMODE, shell: DEBUGMODE })
+
+            player1.stdout.on('data', (data) => put(data));
+            player1.stderr.on('data', (data) => put(data));
+
+            player2.stdout.on('data', (data) => put(data));
+            player2.stderr.on('data', (data) => put(data));
+
+            await new Promise<void>((resolve) => {
+                player1.on('close', () => {
+                    resolve();
+                    return;
+                });
+            });
+            return null;
+        }
         default:
             /** What are you doing here ??? */
             put('Invalid command.\n');
@@ -998,8 +1140,8 @@ function verifyText(text: string): {result:boolean,matched:string} {
  * Sends LLM output to the TTS generator
  * @param say text spoken by the TTS
  */
-function sendToTTS(say: string, test_voice: string = ''): Promise<void> {
-    return new Promise<void>(async(resolve) => {
+function sendToTTS(say: string, test_voice: string = '', test_device: number|null = null): Promise<void|null> {
+    return new Promise<void|null>(async(resolve) => {
 
         exposeCaptions(say);
 
@@ -1015,17 +1157,19 @@ function sendToTTS(say: string, test_voice: string = ''): Promise<void> {
             : wAIfu.character.voice;
 
         if (test_voice !== '') voice = test_voice;
+        let device: number|null = test_device;
 
-        const payload = JSON.stringify({ data: [say, voice] });
+        const payload = JSON.stringify({ data: [say, voice, device] });
         debug('sending: ' + payload + '\n');
 
         // Timeout
         setTimeout(() => {
             if (promise_resolved === true) return;
             promise_resolved = true;
-            warnPut('Error: Timed out while awaiting for TTS\'s response.\n');
+            warnPut('Error: Timed out while awaiting TTS\'s response.\n');
             exposeCaptions('');
             resolve();
+            return;
         }, 45_000);
 
         const post_query = await fetch(TTS.api_url + '/api', {
@@ -1034,19 +1178,27 @@ function sendToTTS(say: string, test_voice: string = ''): Promise<void> {
                 "Content-Type": "application/json"
             },
             body: payload
-        }).catch((e: any) => {
-            errPut('Critical Error: Could not contact the TTS subprocess.\n');
+        }).catch((e: unknown) => {
+            warnPut('Error: Could not contact the TTS subprocess.\n');
             console.log(e);
-            closeProgram(ErrorCode.HTTPError);
+            if (promise_resolved === true) return;
+            promise_resolved = true;
+            exposeCaptions('');
+            resolve(null);
+            return;
         });
 
         if (promise_resolved === true) return;
 
         const text = await post_query!.text();
         if (text[0] !== undefined && text[0] !== '{') {
-            errPut('Critical Error: Received incorrect json from TTS.\n');
+            warnPut('Error: Received incorrect json from TTS.\n');
             console.log(text);
-            closeProgram(ErrorCode.InvalidValue);
+            if (promise_resolved === true) return;
+            promise_resolved = true;
+            exposeCaptions('');
+            resolve(null);
+            return;
         }
         const data = JSON.parse(text);
         debug('received: ' + JSON.stringify(data) + '\n');
@@ -1061,31 +1213,27 @@ function sendToTTS(say: string, test_voice: string = ''): Promise<void> {
         promise_resolved = true;
         exposeCaptions('');
         resolve();
+        return;
     });
     
 }
 
 /** Retreives the last message from the twich chat, see ./twitch/twitchchat.py */
 async function getLastTwitchChat(): Promise<{message:string,name:string}> {
-    /*const get_query = await fetch(CHAT.api_url + '/api').catch((e: any) => {
-        errPut('Critical Error: Could not contact the CHAT subprocess.\n');
-        console.log(e);
-        closeProgram(ErrorCode.HTTPError);
-    });
-    const text = await get_query!.text();
-    if (text[0] !== undefined && text[0] !== '{') {
-        errPut('Critical Error: Received incorrect json from CHAT.\n');
-        console.log(text);
-        closeProgram(ErrorCode.InvalidValue);
-    }
-    const data = JSON.parse(text);
-    debug('received: ' + JSON.stringify(data) + '\n');*/
-
     let data = { message: '', name: '' };
 
     if (fs.existsSync('./twitch/msg.txt') == true) {
-        const raw = fs.readFileSync('./twitch/msg.txt', { encoding: 'utf8' });
-        data['name'] = raw.split(';')[0];
+        const raw: string|undefined = fs.readFileSync('./twitch/msg.txt', { encoding: 'utf8' });
+        if (raw === undefined) {
+            warnPut('Error: Last twitch chat was undefined.\n');
+            return data;
+        }
+        let name = raw.split(';')[0];
+        if (name === undefined) {
+            warnPut('Error: Name in last twitch chat message was undefined.\n');
+            return data;
+        }
+        data['name'] = name;
         data['message'] = raw.substring(data['name'].length, undefined);
     }
     return data; 
@@ -1119,6 +1267,7 @@ function textGet(): Promise<string|null> {
                     debug('Input timeout.\n');
                     resolved = true;
                     resolve(text);
+                    return;
                 }, wAIfu.config.chat_read_timeout_sec * 1000);
             }
 
@@ -1129,12 +1278,14 @@ function textGet(): Promise<string|null> {
                 if (wAIfu.init_cycle !== old_init_cycle) {
                     resolved = true;
                     resolve(null);
+                    return;
                 } else if (wAIfu.command_queue.length > 0) {
                     debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
                     text = wAIfu.command_queue.shift()!;
                     if (text === undefined) text = null;
                     resolved = true;
                     resolve(text);
+                    return;
                 } else {
                     setTimeout(checkQueue, 250);
                 }
@@ -1160,6 +1311,7 @@ function voiceGet(): Promise<string|null> {
                     if (resolved) return;
                     resolved = true;
                     resolve(text);
+                    return;
                 }, wAIfu.config.chat_read_timeout_sec * 1000);
             }
 
@@ -1170,17 +1322,20 @@ function voiceGet(): Promise<string|null> {
                 if (wAIfu.init_cycle !== old_init_cycle) {
                     resolved = true;
                     resolve(null);
+                    return;
                 } else if (fs.existsSync('./speech/input.txt')) {
                     text = fs.readFileSync('./speech/input.txt').toString('utf8');
                     resolved = true;
                     fs.unlinkSync('./speech/input.txt');
                     resolve(text);
+                    return;
                 } else if (wAIfu.command_queue.length > 0) {
                     debug(`Consuming queue element: ${wAIfu.command_queue[0]}\n`);
                     text = wAIfu.command_queue.shift()!;
                     if (text === undefined) text = null;
                     resolved = true;
                     resolve(text);
+                    return;
                 } else {
                     setTimeout(checkFile, 250);
                 }
@@ -1198,7 +1353,11 @@ async function monologue(topic: string): Promise<void> {
     const prompt = `[${wAIfu.character.char_name} starts talking about ${topic}]\n${wAIfu.character.char_name}:`;
     let displayed = '';
     let filtered_txt: string|null = null
-    const response: string = await sendToLLM(flattenMemory('') + prompt);
+    const response: string|null = await sendToLLM(flattenMemory('') + prompt);
+    if (response === null) {
+        await handleCommand('!reload');
+        return;
+    };
     displayed = response;
     let verify_result = verifyText(response);
     if (verify_result.result === true) {
@@ -1216,8 +1375,11 @@ async function monologue(topic: string): Promise<void> {
     } else {
         displayed = ' Filtered.'
     }
-    await sendToTTS(displayed);
-    exposeCaptions('');
+    const tts_reponse = await sendToTTS(displayed);
+    if (tts_reponse === null) {
+        await handleCommand('!reload');
+        return;
+    }
 }
 
 async function closeSubProcesses(): Promise<void> {
@@ -1241,6 +1403,7 @@ function killProc(proc: SubProc, proc_name: string): Promise<void> {
                 put(`Closed ${proc_name}.\n`);
                 proc.process = null;
                 resolve();
+                return;
             });
             let success = proc.process.kill(2);
             if (!success)
@@ -1249,6 +1412,7 @@ function killProc(proc: SubProc, proc_name: string): Promise<void> {
                 proc.running = false;
         } else {
             resolve();
+            return;
         }
     });
 }
@@ -1300,95 +1464,6 @@ function exposeCaptions(text: string): void {
     fs.writeFileSync('./captions/transcript.txt', text);
 }
 
-/**
- * Returns a string from the chat user's memories if present in database
- * @param user name of the chatter
- * @returns a multi-line string containing the memories of the user
- */
-function getChatMemories(user: string): string {
-
-    const db: Map<string,string[]> = fetchChatDatabase();
-    const logs: string[]|undefined = db.get(user);
-    let result: string = '';
-
-    if (logs === undefined) return result;
-
-    for (let s of logs) {
-        result += Buffer.from(s, 'base64').toString('utf8');
-    }
-    return result;
-}
-
-/** Adds a memory to the chat user's database */
-function addChatMemory(user: string, memory: string): void {
-    const db: Map<string,string[]> = fetchChatDatabase();
-    const logs: string[]|undefined = db.get(user);
-
-    /** Memory is encoded in b64 to preserve the CSV file's formating without
-     * having to sanitize the memory itself, a bit hacky but does the job */
-    const b64_mem: string = Buffer.from(memory, 'utf8').toString('base64');
-
-    if (logs === undefined) {
-        db.set(user, [b64_mem]);
-        return;
-    };
-    /** Remove old logs */
-    while (logs.length > 3)
-        logs.shift();
-
-    logs.push(b64_mem);
-    /** Write db back to file */
-    updateChatDatabase(db);
-}
-
-/** Reads and parses the contents of the database */
-function fetchChatDatabase(): Map<string,string[]> {
-    let fcontent = fs.readFileSync('../UserData/data/chat_user_db.csv', { encoding: 'utf8' });
-    return parseChatDatabase(fcontent);
-}
-
-/** Writes the database object back to the CSV file */
-function updateChatDatabase(obj: Map<string,string[]>) {
-    let s = flattenChatDatabase(obj);
-    fs.writeFileSync('../UserData/data/chat_user_db.csv', s);
-}
-
-/** Parses the contents of the CSV file to a Map */
-function parseChatDatabase(csv: string): Map<string,string[]> {
-    const lines: string[] = csv.split(/\r\n|\n/);
-
-    let csv_map: Map<string,string[]> = new Map();
-
-    for (let i: number = 0; i < lines.length; ++i) {
-        if (lines[i].trim() === '') break; /** handles \n before EOF (pretty common source of errors)*/
-        let spl: string[] = lines[i].split(',');
-
-        if (spl.length !== 5) {
-            errPut(`Critical Error: Incorrect formating of chat_user_db.csv file at line ${i}. Expected line length of 5, got ${spl.length}\n`);
-            closeProgram(1);
-        }
-        csv_map.set(spl[0], [ spl[1], spl[2], spl[3], spl[4] ]);
-    }
-    return csv_map;
-}
-
-/** Stringifies the Map before writing to CSV file */
-function flattenChatDatabase(obj: Map<string,string[]>): string {
-    let flat: string = '';
-    for (let [key, value] of obj) {
-
-        while(value.length > 4)
-            value.shift();
-        
-        let line = key
-        for (let s of value) {
-            line += ',' + s;
-        }
-        flat += line + '\n';
-    }
-    return flat;
-}
-
 /** Get list of characters */
 function retreiveCharacters(): string[] {
     const files = fs.readdirSync('../UserData/characters');
@@ -1397,17 +1472,6 @@ function retreiveCharacters(): string[] {
         if (f.endsWith('.json')) result.push(f);
     }
     return result;
-}
-
-function modifyConfig(field: string, value: any): void {
-    if (value === null || value === undefined) {
-        throw new Error('Tried assigning invalid value to config field: ' + field);
-    }
-    if ((wAIfu.config as any)[field] === undefined) {
-        throw new Error('Tried assigning value to inecistant config field: ' + field);
-    }
-    (wAIfu.config as any)[field] = value;
-    fs.writeFileSync('../config.json', JSON.stringify(wAIfu.config));
 }
 
 /** Waits for the process to be responsive */
@@ -1430,7 +1494,7 @@ function awaitProcessLoaded(proc: SubProc, proc_name: string): Promise<void> {
                 if (loaded) return;
                 try {
                     if (is_chat_proc === false) {
-                        const r = await fetch(proc.api_url + '/loaded');
+                        await fetch(proc.api_url + '/loaded');
                         loaded = true;
                         resolve();
                         return;
@@ -1514,18 +1578,31 @@ async function shouldUpdate(): Promise<boolean> {
         return false;
     }
 
-    const data = await query.json().catch((e) => {
+    let data: unknown;
+    try {
+        data = await query.json()
+    } catch {
         warnPut('Error: Could not retreive latest version from github.\n');
         return false;
-    });
+    }
 
-    if (data[0] === undefined || data[0]["name"] === undefined) {
+    if (typeof data !== 'object' || data === null || data === undefined) {
         warnPut('Error: Fetched invalid data from github while trying to retreive latest version.\n');
         return false;
     }
 
-    if (wAIfu.package.version !== data[0].name) {
-        const new_version = String(data[0].name).replaceAll(/[^0-9\.\,\-]/g, '');
+    let latest_version = (data as Array<unknown>)[0];
+
+    if (latest_version === undefined
+        || latest_version === null
+        || typeof latest_version !== "object")
+    {
+        warnPut('Error: Fetched invalid data from github while trying to retreive latest version.\n');
+        return false;
+    }
+
+    if ("name" in latest_version && wAIfu.package.version !== latest_version["name"]) {
+        const new_version = String(latest_version["name"]).replaceAll(/[^0-9\.\,\-]/g, '');
         const answer = await readline_interface.question(`\nA new version of w-AI-fu is available (${new_version})\nDo you want to install it? (Y/n): `);
         return /Y|y/g.test(answer);
     }
@@ -1643,6 +1720,7 @@ async function test() {
 
 
     put('Checking CHAT response ...\n');
+    wAIfu.config = getConfig();
     await startLiveChat();
     await awaitProcessLoaded(CHAT, 'CHAT');
     let c = await getLastTwitchChat();
@@ -1669,11 +1747,29 @@ async function test() {
     put('Checking Voice Input ...\n');
     fs.writeFileSync('./speech/input.txt', 'test');
     let v = await voiceGet();
-    if (t === null || t === undefined) {
+    if (v === null || v === undefined) {
         errPut('rejected.\n');
         return;
     }
     put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
+    put('\x1B[0;32m' + 'Successfuly passed all tests.\n' + '\x1B[0m');
+}
+
+function isOfClass(x: unknown, y: unknown): boolean {
+    if (x === undefined || x === null) {
+        if (x === y) return true;
+        return false;
+    }
+
+    if (typeof x !== "object") {
+        if (typeof x === typeof y) return true
+        return false;
+    }
+
+    for(let key of Object.keys(y as any)) {
+        if (key in x === false) return false;
+    }
+    return true;
 }
 
 //#region GPL3_LICENSE
