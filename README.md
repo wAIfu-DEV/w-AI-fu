@@ -15,10 +15,11 @@ Before running w-AI-fu, follow these steps:
 
 1. Install [NodeJS](https://nodejs.org/en/download/releases) (prefer v19.8.1)
 2. Install [Python](https://www.python.org/downloads/) (prefer 3.10.10)
-3. Run INSTALL.bat in order to install dependencies
-4. Run the application by using the 'Run w-AI-fu' shortcut or 'run.bat' script. Once the WebUI is open, go to the end of the page and hit 'Expand'
-5. Put your [NovelAI](https://novelai.net/) account email/password in the dedicated fields
-6. (OPTIONAL, only for twitch) Put a Twitch [Oauth token](https://twitchapps.com/tmi/) (without the 'oauth:' part) in the dedicated field, set the 'Twitch Channel Name' field to the name of your Twitch channel
+3. Download w-AI-fu from the [releases](https://github.com/wAIfu-DEV/w-AI-fu/releases) page
+4. Run INSTALL.bat in order to install dependencies
+5. Run the application by using the 'Run w-AI-fu' shortcut or 'run.bat' script. Once the WebUI is open, go to the end of the page and hit 'Expand'
+6. Put your [NovelAI](https://novelai.net/) account email/password in the dedicated fields
+7. (OPTIONAL, only for twitch) Put a Twitch [Oauth token](https://twitchapps.com/tmi/) (without the 'oauth:' part) in the dedicated field, set the 'Twitch Channel Name' field to the name of your Twitch channel
 
 You are now set to use w-AI-fu ! 🔥
 
