@@ -502,7 +502,7 @@ async function getChatOrNothing() {
         return { message: '', name: '' };
     }
     else {
-        debug('Successfuly got new message.\n');
+        debug('Successfully got new message.\n');
         wAIfu.last_chat_msg = chatmsg.message;
         return { message: chatmsg.message, name: chatmsg.name };
     }
@@ -534,7 +534,7 @@ async function checkFileIntegrityStrict(path) {
     if (fs.existsSync(path) === false) {
         errPut(`Critical Error: Missing ${path} file. File integrity of the program might be compromised, w-AI-fu will try to reinstall itself.`);
         const answer = await ReadlineInterface.question(`\nContinue? (Y/n): `);
-        if (/|Y|y/g.test(answer)) {
+        if (/Y|y/g.test(answer) || answer === '') {
             let update_success = await update();
             if (update_success === false) {
                 errPut('Critical Error: w-AI-fu failed to reinstall itself. Please reinstall w-AI-fu from https://github.com/wAIfu-DEV/w-AI-fu/releases\n');
@@ -1275,7 +1275,7 @@ async function shouldUpdate() {
     if ("name" in latest_version && wAIfu.package.version !== latest_version["name"]) {
         const new_version = String(latest_version["name"]).replaceAll(/[^0-9\.\,\-]/g, '');
         const answer = await ReadlineInterface.question(`\nA new version of w-AI-fu is available (${new_version})\nDo you want to install it? (Y/n): `);
-        return /|Y|y/g.test(answer);
+        return /Y|y/g.test(answer) || answer === '';
     }
     return false;
 }
@@ -1345,7 +1345,7 @@ async function update() {
     fs.rmSync('./temp.zip', { force: true, recursive: true });
     fs.writeFileSync('./config.json', JSON.stringify(wAIfu.config));
     printProgress(1);
-    put('\nSuccessfully updated w-AI-fu.\n\n');
+    greenPut('\nSuccessfully updated w-AI-fu.\n\n');
     cproc.spawnSync(require.resolve(path.resolve('./INSTALL.bat')));
     return true;
 }
@@ -1385,7 +1385,7 @@ async function test() {
         return;
     }
     put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
-    put('\x1B[0;32m' + 'Successfuly passed all tests.\n' + '\x1B[0m');
+    put('\x1B[0;32m' + 'Successfully passed all tests.\n' + '\x1B[0m');
 }
 function isOfClass(x, y) {
     if (x === undefined || x === null) {
@@ -1550,7 +1550,7 @@ async function connectTwitchEventSub() {
                 const msg_type = obj["metadata"]["message_type"];
                 switch (msg_type) {
                     case MSG_WELCOME: {
-                        greenPut('Successfuly connected to Twitch EventSub WebSocket.\n');
+                        greenPut('Successfully connected to Twitch EventSub WebSocket.\n');
                         ws_session_id = obj["payload"]["session"]["id"];
                         return;
                     }

@@ -741,7 +741,7 @@ async function checkFileIntegrityStrict(path: string): Promise<void> {
     if (fs.existsSync(path) === false) {
         errPut(`Critical Error: Missing ${path} file. File integrity of the program might be compromised, w-AI-fu will try to reinstall itself.`);
         const answer = await ReadlineInterface.question(`\nContinue? (Y/n): `);
-        if (/|Y|y/g.test(answer)) {
+        if (/Y|y/g.test(answer) || answer === '') {
             let update_success = await update();
             if (update_success === false) {
                 errPut('Critical Error: w-AI-fu failed to reinstall itself. Please reinstall w-AI-fu from https://github.com/wAIfu-DEV/w-AI-fu/releases\n');
@@ -1720,7 +1720,7 @@ async function shouldUpdate(): Promise<boolean> {
     if ("name" in latest_version && wAIfu.package.version !== latest_version["name"]) {
         const new_version = String(latest_version["name"]).replaceAll(/[^0-9\.\,\-]/g, '');
         const answer = await ReadlineInterface.question(`\nA new version of w-AI-fu is available (${new_version})\nDo you want to install it? (Y/n): `);
-        return /|Y|y/g.test(answer);
+        return /Y|y/g.test(answer) || answer === '';
     }
     return false;
 }
