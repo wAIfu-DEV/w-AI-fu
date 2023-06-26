@@ -29,15 +29,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 const DEBUGMODE = false;
 const fs = __importStar(require("fs"));
 const cproc = __importStar(require("child_process"));
-const ws_1 = require("ws");
+const ws_1 = __importStar(require("ws"));
 const extract_zip_1 = __importDefault(require("extract-zip"));
 const readline = __importStar(require("readline/promises"));
 const path = __importStar(require("path"));
-const readline_interface = readline.createInterface(process.stdin, process.stdout);
+const http = __importStar(require("http"));
+const url = __importStar(require("url"));
+const ReadlineInterface = readline.createInterface(process.stdin, process.stdout);
 const HOST_PATH = '127.0.0.1';
-const PORT_WSS = 7870;
-const PORT_LLM = 7840;
-const PORT_TTS = 7850;
+let PORT_OFFSET = 0;
+let PORT_WSS = 7770;
+let PORT_LLM = 7760;
+let PORT_TTS = 7750;
+const PORT_TWITCH_AUTH_CALLBACK = 3000;
 var ErrorCode;
 (function (ErrorCode) {
     ErrorCode[ErrorCode["None"] = 0] = "None";
@@ -46,13 +50,21 @@ var ErrorCode;
     ErrorCode[ErrorCode["HTTPError"] = 3] = "HTTPError";
     ErrorCode[ErrorCode["Critical"] = 4] = "Critical";
 })(ErrorCode || (ErrorCode = {}));
-const wss = new ws_1.WebSocketServer({ host: HOST_PATH, port: PORT_WSS });
-let ws = null;
-wss.on('connection', (socket) => {
+let UiWebSocketServer = null;
+try {
+    UiWebSocketServer = new ws_1.WebSocketServer({ host: HOST_PATH, port: PORT_WSS + PORT_OFFSET });
+}
+catch (e) {
+    errPut('Critical Error: Cannot run more than 1 instance of w-AI-fu. This might change in the future.');
+    closeProgram(ErrorCode.Critical);
+    process.exit(ErrorCode.Critical);
+}
+let UiWebSocket = null;
+UiWebSocketServer.on('connection', (socket) => {
     debug('connected ws server.\n');
-    ws = socket;
-    ws.on('error', console.error);
-    ws.on('message', (data) => handleSocketMessage(data));
+    UiWebSocket = socket;
+    UiWebSocket.on('error', console.error);
+    UiWebSocket.on('message', (data) => handleSocketMessage(data));
 });
 async function handleSocketMessage(data) {
     const message = String(data);
@@ -113,7 +125,7 @@ function wsPAUSE() {
         wsINTERRUPT();
 }
 function wsLATEST() {
-    ws.send('LATEST ' + JSON.stringify({
+    UiWebSocket.send('LATEST ' + JSON.stringify({
         "config": wAIfu.config,
         "character": wAIfu.character,
         "chars_list": retreiveCharacters(),
@@ -148,12 +160,12 @@ function wsCONFIG(data) {
     wAIfu.should_reload = true;
 }
 function wsAUTH_GET() {
-    ws.send('AUTH ' + JSON.stringify({
+    UiWebSocket.send('AUTH ' + JSON.stringify({
         "novel-mail": getAuth('novel_user'),
         "novel-pass": getAuth('novel_pass'),
         "twitch-oauth": getAuth('twitch_oauth'),
-        "playht-auth": getAuth('play-ht_auth'),
-        "playht-user": getAuth('play-ht_user')
+        "twitchapp-clientid": getAuth('twitchapp_clientid'),
+        "twitchapp-secret": getAuth('twitchapp_secret')
     }));
 }
 function wsAUTH_SET(data) {
@@ -161,8 +173,8 @@ function wsAUTH_SET(data) {
     setAuth('novel_user', obj["novel-mail"]);
     setAuth('novel_pass', obj["novel-pass"]);
     setAuth('twitch_oauth', obj["twitch-oauth"]);
-    setAuth('play-ht_auth', obj["playht-auth"]);
-    setAuth('play-ht_user', obj["playht-user"]);
+    setAuth('twitchapp_clientid', obj["twitchapp-clientid"]);
+    setAuth('twitchapp_secret', obj["twitchapp-secret"]);
     wAIfu.should_reload = true;
 }
 function wsCHARA(data) {
@@ -192,7 +204,6 @@ class Config {
     parrot_mode = false;
     read_live_chat = false;
     monologue = false;
-    tts_use_playht = false;
     twitch_channel_name = '';
     chat_read_timeout_sec = 2;
     filter_bad_words = true;
@@ -200,6 +211,7 @@ class Config {
     audio_device = -1;
     audio_device_other = -1;
     monologue_chance = 50;
+    tts_volume_modifier = 10;
     chatter_blacklist = [];
 }
 class Character {
@@ -224,6 +236,8 @@ class wAIfuApp {
     bad_words = [];
     command_queue = [];
     last_chat_msg = '';
+    new_chat_msg = '';
+    new_chat_usr = '';
     dialog_transcript = '';
     input_mode = InputMode.Text;
     config = new Config();
@@ -244,10 +258,12 @@ class SubProc {
         this.api_url = port;
     }
 }
-const LLM = new SubProc(`http://${HOST_PATH}:${PORT_LLM}`);
-const TTS = new SubProc(`http://${HOST_PATH}:${PORT_TTS}`);
+const LLM = new SubProc(`http://${HOST_PATH}:${PORT_LLM + PORT_OFFSET}`);
+const TTS = new SubProc(`http://${HOST_PATH}:${PORT_TTS + PORT_OFFSET}`);
 const CHAT = new SubProc('');
 const STT = new SubProc('');
+let TwitchChatWebSocket = null;
+let TwitchEventSubWebSocket = null;
 main();
 async function main() {
     if (process.argv.find(value => value === '--test') !== undefined) {
@@ -277,11 +293,11 @@ async function main() {
             wAIfu.input_skipped = true;
             continue main_loop;
         }
-        if (ws !== null && ws.readyState === ws.OPEN) {
+        if (UiWebSocket !== null && UiWebSocket.readyState === UiWebSocket.OPEN) {
             if (is_chat)
-                ws.send('MSG_CHAT ' + JSON.stringify({ "user": pseudo, "text": handled }));
+                UiWebSocket.send('MSG_CHAT ' + JSON.stringify({ "user": pseudo, "text": handled }));
             else
-                ws.send('MSG_IN ' + handled);
+                UiWebSocket.send('MSG_IN ' + handled);
         }
         const identifier = (is_chat)
             ? `[CHAT] ${pseudo}`
@@ -298,7 +314,7 @@ async function main() {
             continue main_loop;
         }
         let displayed = (is_chat)
-            ? ` ${pseudo} said "${handled}".${response}`
+            ? ` "${handled}".${response}`
             : response;
         let filtered_content = null;
         const verify_result = verifyText(displayed);
@@ -307,8 +323,8 @@ async function main() {
             response = ' Filtered.\n';
         }
         put(`${wAIfu.character.char_name}:${displayed}`);
-        if (ws !== null && ws.readyState === ws.OPEN) {
-            ws.send('MSG_OUT ' + JSON.stringify({
+        if (UiWebSocket !== null && UiWebSocket.readyState === UiWebSocket.OPEN) {
+            UiWebSocket.send('MSG_OUT ' + JSON.stringify({
                 "text": displayed,
                 "filtered": filtered_content
             }));
@@ -330,10 +346,15 @@ async function main() {
 }
 async function init() {
     process.title = 'w-AI-fu Console';
-    wAIfu.package = getPackage();
+    wAIfu.package = await getPackage();
     put(`w-AI-fu ${wAIfu.package.version}\n`);
     if (await shouldUpdate() === true) {
-        await update();
+        let update_success = await update();
+        if (update_success === true) {
+            greenPut('Successfully updated w-AI-fu.\n');
+            closeProgram(ErrorCode.None);
+        }
+        warnPut('Error: Failed to update w-AI-fu.\n');
     }
     if (fs.existsSync('./ffmpeg/ffmpeg.exe') === false) {
         errPut('Critical Error: Could not find ffmpeg. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead:\nhttps://github.com/wAIfu-DEV/w-AI-fu/releases\n');
@@ -350,12 +371,17 @@ async function init() {
     wAIfu.memory.long_term = `(${wAIfu.character.char_persona})\n\n${wAIfu.character.example_dialogue}`;
     if (wAIfu.config.filter_bad_words) {
         put('Loading filter ...\n');
-        wAIfu.bad_words = getBadWords();
+        wAIfu.bad_words = await getBadWords();
     }
     put('Getting audio devices ...\n');
     getDevices();
     put('Spawning subprocesses ...\n');
     await summonProcesses(wAIfu.input_mode);
+    if (wAIfu.config.read_live_chat) {
+        put('Connecting to the Twitch API ...\n');
+        connectTwitchChatWebSocket();
+        await connectTwitchEventSub();
+    }
     put('Starting WebUI ...\n');
     cproc.spawn('cmd.exe', ['/C', 'start index.html'], { cwd: './ui' });
     put('Loaded w-AI-fu.\n\n');
@@ -365,7 +391,7 @@ async function init() {
 async function reinit() {
     wAIfu.init_cycle++;
     put('Reinitializing ...\n');
-    wAIfu.package = getPackage();
+    wAIfu.package = await getPackage();
     wAIfu.config = getConfig();
     wAIfu.chat_reader_initialized = false;
     wAIfu.live_chat = wAIfu.config.read_live_chat;
@@ -374,14 +400,16 @@ async function reinit() {
         : InputMode.Text;
     wAIfu.character = getCharacter();
     wAIfu.memory.long_term = `(${wAIfu.character.char_persona})\n\n${wAIfu.character.example_dialogue}`;
+    wAIfu.bad_words = [];
     if (wAIfu.config.filter_bad_words) {
-        wAIfu.bad_words = getBadWords();
+        wAIfu.bad_words = await getBadWords();
     }
     put('Getting audio devices ...\n');
     getDevices();
     await summonProcesses(wAIfu.input_mode);
 }
 function flattenMemory(additional) {
+    put("mem: " + wAIfu.memory.short_term.length + "\n");
     while (wAIfu.memory.short_term.length > 4) {
         wAIfu.memory.short_term.shift();
     }
@@ -393,8 +421,6 @@ function isAuthCorrect() {
     const USR = getAuth('novel_user');
     const PSW = getAuth('novel_pass');
     const OAU = getAuth('twitch_oauth');
-    const PTA = getAuth('play-ht_auth');
-    const PTU = getAuth('play-ht_user');
     if (USR === '') {
         put('Validation Error: NovelAI account mail adress is missing from UserData/auth/novel_user.txt\n');
         return false;
@@ -405,14 +431,6 @@ function isAuthCorrect() {
     }
     if (OAU === '' && wAIfu.config.read_live_chat === true) {
         put('Validation Error: twitch oauth token is missing from UserData/auth/twitch_oauth.txt\n');
-        return false;
-    }
-    if (PTA === '' && wAIfu.config.tts_use_playht === true) {
-        put('Validation Error: play.ht auth token is missing from UserData/auth/play-ht_auth.txt\n');
-        return false;
-    }
-    if (PTU === '' && wAIfu.config.tts_use_playht === true) {
-        put('Validation Error: play.ht user token is missing from UserData/auth/play-ht_user.txt\n');
         return false;
     }
     return true;
@@ -490,7 +508,9 @@ async function getChatOrNothing() {
     }
 }
 function getConfig() {
-    const buff = fs.readFileSync('../config.json');
+    const PATH = '../config.json';
+    checkFileIntegrityLoose(PATH, JSON.stringify(new Config()));
+    const buff = fs.readFileSync(PATH);
     const obj = JSON.parse(buff.toString());
     return checkConfigFields(obj);
 }
@@ -510,20 +530,50 @@ function checkConfigFields(obj) {
     }
     return obj;
 }
-function getPackage() {
-    const buff = fs.readFileSync('./package.json');
+async function checkFileIntegrityStrict(path) {
+    if (fs.existsSync(path) === false) {
+        errPut(`Critical Error: Missing ${path} file. File integrity of the program might be compromised, w-AI-fu will try to reinstall itself.`);
+        const answer = await ReadlineInterface.question(`\nContinue? (Y/n): `);
+        if (/|Y|y/g.test(answer)) {
+            let update_success = await update();
+            if (update_success === false) {
+                errPut('Critical Error: w-AI-fu failed to reinstall itself. Please reinstall w-AI-fu from https://github.com/wAIfu-DEV/w-AI-fu/releases\n');
+                closeProgram(ErrorCode.Critical);
+            }
+            greenPut('Successfully reinstalled w-AI-fu.\n');
+            closeProgram(ErrorCode.None);
+        }
+        else {
+            closeProgram(ErrorCode.Critical);
+        }
+    }
+}
+async function checkFileIntegrityLoose(path, content_if_lost) {
+    if (fs.existsSync(path) === false) {
+        warnPut(`Error: Missing ${path} file. w-AI-fu will try to a create new one.\n`);
+        fs.writeFileSync(path, content_if_lost);
+    }
+}
+async function getPackage() {
+    const PATH = './package.json';
+    checkFileIntegrityStrict(PATH);
+    const buff = fs.readFileSync(PATH);
     return JSON.parse(buff.toString());
 }
-function getBadWords() {
+async function getBadWords() {
     if (wAIfu.config.filter_bad_words === false)
         return [];
-    let fcontent = fs.readFileSync('./bad_words/bad_words_b64').toString();
+    const PATH = './bad_words/bad_words_b64';
+    checkFileIntegrityStrict(PATH);
+    let fcontent = fs.readFileSync(PATH).toString();
     const buff = Buffer.from(fcontent, 'base64');
     const tostr = buff.toString('utf-8');
     return tostr.split(/\r\n|\n/g).map((v) => { return v.toLowerCase(); });
 }
 function getCharacter() {
-    const buff = fs.readFileSync(`../UserData/characters/${wAIfu.config.character_name}.json`);
+    const PATH = `../UserData/characters/${wAIfu.config.character_name}.json`;
+    checkFileIntegrityLoose(PATH, JSON.stringify(new Character()));
+    const buff = fs.readFileSync(PATH);
     const char = JSON.parse(buff.toString());
     return checkCharacterFields(char);
 }
@@ -556,20 +606,12 @@ async function summonProcesses(mode) {
                 await startSTT();
             break;
     }
-    if (wAIfu.live_chat) {
-        if (!CHAT.running)
-            await startLiveChat();
-    }
     await awaitProcessLoaded(LLM, 'LLM');
     put('Loaded LLM.\n');
     await awaitProcessLoaded(TTS, 'TTS');
     put('Loaded TTS.\n');
     if (mode === InputMode.Voice) {
         put('Loaded STT.\n');
-    }
-    if (wAIfu.live_chat) {
-        await awaitProcessLoaded(CHAT, 'CHAT');
-        put('Loaded CHAT.\n');
     }
 }
 function readPythonStdOut(subprocess, proc_name) {
@@ -593,7 +635,7 @@ async function startLLM() {
         return;
     const USR = getAuth('novel_user');
     const PSW = getAuth('novel_pass');
-    LLM.process = cproc.spawn('python', ['novel_llm.py'], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
+    LLM.process = cproc.spawn('python', ['novel_llm.py', String(PORT_LLM + PORT_OFFSET)], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
     readPythonStdOut(LLM, 'LLM');
     readPythonStdErr(LLM, 'LLM');
     LLM.running = true;
@@ -601,28 +643,13 @@ async function startLLM() {
 async function startTTS() {
     if (TTS.running)
         return;
-    const USR = (wAIfu.config.tts_use_playht) ? getAuth('play-ht_user') : getAuth('novel_user');
-    const PSW = (wAIfu.config.tts_use_playht) ? getAuth('play-ht_auth') : getAuth('novel_pass');
-    const tts_provider = (wAIfu.config.tts_use_playht) ? 'playht_tts.py' : 'novel_tts.py';
-    TTS.process = cproc.spawn('python', [tts_provider], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
+    const USR = getAuth('novel_user');
+    const PSW = getAuth('novel_pass');
+    const tts_provider = 'novel_tts.py';
+    TTS.process = cproc.spawn('python', [tts_provider, String(PORT_TTS + PORT_OFFSET)], { cwd: './novel', env: { NAI_USERNAME: USR, NAI_PASSWORD: PSW }, detached: DEBUGMODE, shell: DEBUGMODE });
     readPythonStdOut(TTS, 'TTS');
     readPythonStdErr(TTS, 'TTS');
     TTS.running = true;
-}
-async function startLiveChat() {
-    if (CHAT.running)
-        return;
-    const OAUTH = getAuth('twitch_oauth');
-    if (fs.existsSync('./twitch/loaded.txt') === true) {
-        fs.unlinkSync('./twitch/loaded.txt');
-    }
-    if (fs.existsSync('./twitch/msg.txt') === true) {
-        fs.unlinkSync('./twitch/msg.txt');
-    }
-    CHAT.process = cproc.spawn('python', ['twitchchat.py'], { cwd: './twitch', env: { OAUTH: OAUTH, CHANNEL: wAIfu.config.twitch_channel_name }, detached: DEBUGMODE, shell: DEBUGMODE });
-    readPythonStdOut(CHAT, 'CHAT');
-    readPythonStdErr(CHAT, 'CHAT');
-    CHAT.running = true;
 }
 async function startSTT() {
     if (STT.running)
@@ -693,8 +720,8 @@ async function handleCommand(command) {
     if (wAIfu.config.parrot_mode && command.startsWith('!', 0) === false) {
         if (wAIfu.input_mode === InputMode.Voice)
             put(command + '\n');
-        ws.send(`MSG_IN ${command}`);
-        ws.send(`MSG_OUT ${JSON.stringify({ "text": command, "filtered": null })}`);
+        UiWebSocket.send(`MSG_IN ${command}`);
+        UiWebSocket.send(`MSG_OUT ${JSON.stringify({ "text": command, "filtered": null })}`);
         command = '!say ' + command;
     }
     if (command.length > 0 && command[0] !== '!')
@@ -764,7 +791,7 @@ async function handleCommand(command) {
         case '!script': {
             const fpath = command.substring('!script '.length, undefined).trim();
             const fpath_resolved = `../UserData/scripts/${fpath}`;
-            if (!fs.existsSync(fpath_resolved)) {
+            if (fs.existsSync(fpath_resolved) === false) {
                 warnPut(`Error: Cannot open file ${fpath_resolved}\n`);
                 return null;
             }
@@ -800,22 +827,6 @@ async function handleCommand(command) {
             }
             return null;
         }
-        case '!chat': {
-            const chat_toggle = command.substring('!chat '.length, undefined).trim();
-            switch (chat_toggle.toLowerCase()) {
-                case 'on':
-                    wAIfu.live_chat = true;
-                    await startLiveChat();
-                    break;
-                case 'off':
-                    wAIfu.live_chat = false;
-                    break;
-                default:
-                    put('Invalid chat mode, must be either on or off\n');
-                    break;
-            }
-            return null;
-        }
         case '!config': {
             console.log(wAIfu.config);
             return null;
@@ -842,15 +853,25 @@ async function handleCommand(command) {
                 warnPut('Error: Could not find file: ' + instrumentals);
                 return null;
             }
-            let player1 = cproc.spawn('python', ['./singing/sing.py', vocals, instrumentals, String(wAIfu.config.audio_device), String(wAIfu.config.audio_device_other)], { cwd: './', detached: DEBUGMODE, shell: DEBUGMODE });
-            let player2 = cproc.spawn('python', ['./singing/sing.py', instrumentals, vocals, String(wAIfu.config.audio_device_other), String(wAIfu.config.audio_device)], { cwd: './', detached: DEBUGMODE, shell: DEBUGMODE });
+            let player1 = cproc.spawn('python', ['./singing/sing.py', vocals, String(wAIfu.config.audio_device)], { cwd: './', detached: DEBUGMODE, shell: DEBUGMODE });
+            let player2 = cproc.spawn('python', ['./singing/sing.py', instrumentals, String(wAIfu.config.audio_device_other)], { cwd: './', detached: DEBUGMODE, shell: DEBUGMODE });
             player1.stdout.on('data', (data) => put(data));
             player1.stderr.on('data', (data) => put(data));
             player2.stdout.on('data', (data) => put(data));
             player2.stderr.on('data', (data) => put(data));
             await new Promise((resolve) => {
+                let player1_closed = false;
+                let player2_closed = false;
                 player1.on('close', () => {
-                    resolve();
+                    player1_closed = true;
+                    if (player2_closed === true)
+                        resolve();
+                    return;
+                });
+                player2.on('close', () => {
+                    player2_closed = true;
+                    if (player1_closed === true)
+                        resolve();
                     return;
                 });
             });
@@ -862,25 +883,28 @@ async function handleCommand(command) {
     }
 }
 function sanitizeText(text) {
-    return text.replaceAll(/[^a-zA-Z .,?!0-9\+\-\%\*\/]/g, '');
+    return text.replaceAll(/[^a-zA-Z .,?!0-9\+\-\%\*\/\_]/g, '');
 }
 function verifyText(text) {
+    if (wAIfu.config.filter_bad_words === false)
+        return { result: false, matched: [] };
+    let matched_result = false;
+    let matched_words = [];
     const low_text = text.toLowerCase();
     for (const bw of wAIfu.bad_words) {
         if (low_text.includes(bw)) {
             put('FILTER MATCHED: "' + bw + '" in "' + text + '"\n');
-            return { result: true, matched: bw };
+            matched_words.push(bw);
+            matched_result = true;
         }
     }
-    return { result: false, matched: '' };
+    return { result: matched_result, matched: matched_words };
 }
 function sendToTTS(say, test_voice = '', test_device = null) {
     return new Promise(async (resolve) => {
         exposeCaptions(say);
         let promise_resolved = false;
-        let default_voice = (wAIfu.config.tts_use_playht === true)
-            ? 'Scarlett'
-            : 'galette';
+        let default_voice = 'galette';
         let voice = (wAIfu.character.voice == '')
             ? default_voice
             : wAIfu.character.voice;
@@ -943,20 +967,10 @@ function sendToTTS(say, test_voice = '', test_device = null) {
 }
 async function getLastTwitchChat() {
     let data = { message: '', name: '' };
-    if (fs.existsSync('./twitch/msg.txt') == true) {
-        const raw = fs.readFileSync('./twitch/msg.txt', { encoding: 'utf8' });
-        if (raw === undefined) {
-            warnPut('Error: Last twitch chat was undefined.\n');
-            return data;
-        }
-        let name = raw.split(';')[0];
-        if (name === undefined) {
-            warnPut('Error: Name in last twitch chat message was undefined.\n');
-            return data;
-        }
-        data['name'] = name;
-        data['message'] = raw.substring(data['name'].length, undefined);
-    }
+    if (wAIfu.config.chatter_blacklist.includes(wAIfu.new_chat_usr))
+        return data;
+    data.message = wAIfu.new_chat_msg;
+    data.name = wAIfu.new_chat_usr;
     return data;
 }
 function init_get() {
@@ -964,7 +978,7 @@ function init_get() {
         wAIfu.command_queue.push(input);
         debug('Added: ' + input + ' to queue.\n');
     };
-    readline_interface.on('line', e);
+    ReadlineInterface.on('line', e);
 }
 function textGet() {
     debug('Awaiting text input ...\n');
@@ -1068,8 +1082,8 @@ async function monologue(topic) {
     }
     put(`${wAIfu.character.char_name}:${displayed}`);
     exposeCaptions(displayed);
-    if (ws !== null && ws.readyState === ws.OPEN) {
-        ws.send('MSG_OUT ' + JSON.stringify({ "text": displayed, "filtered": filtered_txt }));
+    if (UiWebSocket !== null && UiWebSocket.readyState === UiWebSocket.OPEN) {
+        UiWebSocket.send('MSG_OUT ' + JSON.stringify({ "text": displayed, "filtered": filtered_txt }));
     }
     if (filtered_txt === null) {
         const new_memory = `${prompt}${displayed}`;
@@ -1126,9 +1140,12 @@ function warnPut(text) {
 }
 function errPut(text) {
     process.stdout.write('\x1B[0;31m' + text + '\x1B[0m');
-    if (ws !== null && ws.readyState === ws.OPEN) {
-        ws.send('ERROR ' + text);
+    if (UiWebSocket !== null && UiWebSocket.readyState === UiWebSocket.OPEN) {
+        UiWebSocket.send('ERROR ' + text);
     }
+}
+function greenPut(text) {
+    process.stdout.write('\x1B[0;32m' + text + '\x1B[0m');
 }
 function debug(text) {
     if (wAIfu.is_debug || DEBUGMODE)
@@ -1138,7 +1155,12 @@ function exposeCaptions(text) {
     fs.writeFileSync('./captions/transcript.txt', text);
 }
 function retreiveCharacters() {
-    const files = fs.readdirSync('../UserData/characters');
+    const PATH = '../UserData/characters';
+    if (fs.existsSync(PATH) === false) {
+        warnPut(`Error: Could not find directory ${PATH} , w-AI-fu will try to create a new one.`);
+        fs.mkdirSync(PATH, { recursive: true });
+    }
+    const files = fs.readdirSync(PATH);
     let result = [];
     for (let f of files) {
         if (f.endsWith('.json'))
@@ -1149,7 +1171,6 @@ function retreiveCharacters() {
 function awaitProcessLoaded(proc, proc_name) {
     return new Promise((resolve) => {
         let loaded = false;
-        let is_chat_proc = (proc_name === 'CHAT');
         const timeout = () => {
             if (loaded)
                 return;
@@ -1163,23 +1184,10 @@ function awaitProcessLoaded(proc, proc_name) {
             if (loaded)
                 return;
             try {
-                if (is_chat_proc === false) {
-                    await fetch(proc.api_url + '/loaded');
-                    loaded = true;
-                    resolve();
-                    return;
-                }
-                else {
-                    if (fs.existsSync('./twitch/loaded.txt') === true) {
-                        loaded = true;
-                        fs.unlinkSync('./twitch/loaded.txt');
-                        resolve();
-                        return;
-                    }
-                    else {
-                        setTimeout(checkloaded, 500);
-                    }
-                }
+                await fetch(proc.api_url + '/loaded');
+                loaded = true;
+                resolve();
+                return;
             }
             catch (e) {
                 setTimeout(checkloaded, 500);
@@ -1194,11 +1202,17 @@ function getDevices() {
         fs.unlinkSync('./devices/devices.json');
     }
     cproc.spawnSync('python', ['audio_devices.py'], { cwd: './devices' });
+    if (fs.existsSync('./devices/devices.json') === false) {
+        errPut('Critical Error: Could not create a Python child process. This may be due to a missing Python installation, or a missing PATH system environment variable; Either can be fixed by (re)installing Python with the "Add Python 3.10 to PATH" enabled.');
+        closeProgram(ErrorCode.Critical);
+    }
     const data = fs.readFileSync('./devices/devices.json');
     wAIfu.audio_devices = JSON.parse(data.toString('utf8'));
 }
 function getAuth(what) {
-    return basic_decode(fs.readFileSync(`../UserData/auth/${what}.txt`));
+    const PATH = `../UserData/auth/${what}.txt`;
+    checkFileIntegrityLoose(PATH, '');
+    return basic_decode(fs.readFileSync(PATH));
 }
 function setAuth(what, data) {
     fs.writeFileSync(`../UserData/auth/${what}.txt`, basic_encode(data));
@@ -1229,9 +1243,8 @@ function printProgress(percent = 0) {
     put('\r[' + buff + '] ' + Math.round(percent * 100).toString() + '%');
 }
 async function shouldUpdate() {
-    if (fs.existsSync('../.dev') === true) {
+    if (fs.existsSync('../.dev') === true)
         return false;
-    }
     let query;
     try {
         query = await fetch('https://api.github.com/repos/wAIfu-DEV/w-AI-fu/tags');
@@ -1261,8 +1274,8 @@ async function shouldUpdate() {
     }
     if ("name" in latest_version && wAIfu.package.version !== latest_version["name"]) {
         const new_version = String(latest_version["name"]).replaceAll(/[^0-9\.\,\-]/g, '');
-        const answer = await readline_interface.question(`\nA new version of w-AI-fu is available (${new_version})\nDo you want to install it? (Y/n): `);
-        return /Y|y/g.test(answer);
+        const answer = await ReadlineInterface.question(`\nA new version of w-AI-fu is available (${new_version})\nDo you want to install it? (Y/n): `);
+        return /|Y|y/g.test(answer);
     }
     return false;
 }
@@ -1334,7 +1347,6 @@ async function update() {
     printProgress(1);
     put('\nSuccessfully updated w-AI-fu.\n\n');
     cproc.spawnSync(require.resolve(path.resolve('./INSTALL.bat')));
-    closeProgram(ErrorCode.None);
     return true;
 }
 async function test() {
@@ -1354,17 +1366,6 @@ async function test() {
     await awaitProcessLoaded(TTS, 'TTS');
     await sendToTTS('test');
     await killProc(TTS, 'TTS');
-    put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
-    put('Checking CHAT response ...\n');
-    wAIfu.config = getConfig();
-    await startLiveChat();
-    await awaitProcessLoaded(CHAT, 'CHAT');
-    let c = await getLastTwitchChat();
-    if (c === null || c === undefined) {
-        errPut('rejected.\n');
-        return;
-    }
-    await killProc(CHAT, 'CHAT');
     put('\x1B[0;32m' + 'passed.\n' + '\x1B[0m');
     put('Checking Text Input ...\n');
     init_get();
@@ -1402,4 +1403,248 @@ function isOfClass(x, y) {
             return false;
     }
     return true;
+}
+function connectTwitchChatWebSocket() {
+    TwitchChatWebSocket = new ws_1.default('wss://irc-ws.chat.twitch.tv:443');
+    let ws = TwitchChatWebSocket;
+    let chat_started = false;
+    ws.on('open', () => {
+        ws.send(`PASS oauth:${getAuth('twitch_oauth')}`);
+        ws.send(`NICK ${wAIfu.config.twitch_channel_name}`);
+        ws.send(`JOIN #${wAIfu.config.twitch_channel_name}`);
+    });
+    ws.on('close', (code, reason) => {
+        put(`Closed Twitch Chat WebSocket with message: ${code} ${reason.toString()}`);
+        TwitchChatWebSocket = null;
+    });
+    ws.on('error', (err) => {
+        if (err.message === 'Connection to remote host was lost.') {
+            errPut('Critical Error: Could not connect to the Twitch API, it may be due to an incorrect Oauth token.');
+            closeProgram(ErrorCode.Critical);
+        }
+        else {
+            errPut('Critical Error:' + err.message);
+            closeProgram(ErrorCode.Critical);
+        }
+    });
+    ws.on('message', (data, _) => {
+        let msg = data.toString();
+        if (msg.includes('PING')) {
+            ws.send('PONG');
+            return;
+        }
+        if (msg.includes(':End of /NAMES list')) {
+            chat_started = true;
+            return;
+        }
+        if (chat_started) {
+            let last_msg = msg.split(/\r\n|\n/g)[0];
+            wAIfu.new_chat_usr = Array.from(last_msg.matchAll(/(?<=^:)(.*?)(?=!)/g))[0][0].toString();
+            wAIfu.new_chat_msg = Array.from(last_msg.matchAll(RegExp(`(?<=PRIVMSG #${wAIfu.config.twitch_channel_name} :)(.*)`, 'g')))[0][0].toString();
+        }
+    });
+}
+async function getTwitchAppAccessToken() {
+    let req = await fetch(`https://id.twitch.tv/oauth2/token`
+        + `?client_id=${getAuth('twitchapp_clientid')}`
+        + `&client_secret=${getAuth('twitchapp_secret')}`
+        + `&grant_type=client_credentials`, {
+        method: 'POST'
+    });
+    let resp = await req.json();
+    return resp["access_token"];
+}
+function getTwitchUserAccessToken() {
+    let redirect_url = `https://id.twitch.tv/oauth2/authorize`
+        + `?client_id=${getAuth('twitchapp_clientid')}`
+        + `^&redirect_uri=http://localhost:${PORT_TWITCH_AUTH_CALLBACK}/callback`
+        + `^&response_type=token+id_token`
+        + `^&scope=channel:read:subscriptions+moderator:read:followers+bits:read+openid`;
+    cproc.spawn('cmd.exe', ['/C', 'start ' + redirect_url]);
+}
+async function getTwitchUID(login, apptoken) {
+    let req = await fetch(`https://api.twitch.tv/helix/users?login=${login}`, {
+        method: 'GET',
+        headers: {
+            "Authorization": "Bearer " + apptoken,
+            "Client-Id": getAuth('twitchapp_clientid')
+        }
+    });
+    let resp = await req.json();
+    greenPut('Obtained Twitch UID\n');
+    return resp["data"][0]["id"];
+}
+function subscribeToEventSub(event_name, version, condition = {}, user_token, session_id) {
+    fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
+        method: 'POST',
+        headers: {
+            "Content-Type": "application/json",
+            "Authorization": "Bearer " + user_token,
+            "Client-Id": getAuth('twitchapp_clientid'),
+        },
+        body: JSON.stringify({
+            "type": event_name,
+            "version": version,
+            "condition": condition,
+            "transport": {
+                "method": "websocket",
+                "session_id": session_id
+            }
+        })
+    })
+        .catch((reason) => {
+        console.log(reason);
+    });
+}
+const EVENT_FOLLOW = "channel.follow";
+const EVENT_SUBSCRIBE = "channel.subscribe";
+const EVENT_GIFT_SUB = "channel.subscription.gift";
+const EVENT_BITS = "channel.cheer";
+const EVENT_RAID = "channel.raid";
+function subscribeToEvents(user_id, user_token, session_id) {
+    subscribeToEventSub(EVENT_FOLLOW, "2", { "broadcaster_user_id": user_id, "moderator_user_id": user_id }, user_token, session_id);
+    subscribeToEventSub(EVENT_SUBSCRIBE, "1", { "broadcaster_user_id": user_id }, user_token, session_id);
+    subscribeToEventSub(EVENT_GIFT_SUB, "1", { "broadcaster_user_id": user_id }, user_token, session_id);
+    subscribeToEventSub(EVENT_BITS, "1", { "broadcaster_user_id": user_id }, user_token, session_id);
+    subscribeToEventSub(EVENT_RAID, "1", { "to_broadcaster_user_id": user_id }, user_token, session_id);
+}
+async function connectTwitchEventSub() {
+    let apptoken = await getTwitchAppAccessToken();
+    let user_id = await getTwitchUID(wAIfu.config.twitch_channel_name, apptoken);
+    let user_token = '';
+    let user_id_token = '';
+    let ws_session_id = '';
+    let callback_script = `
+    <head>
+        <title>redirecting...</title>
+    </head>
+    <body>
+        <script>
+            let payload = window.location.hash.replace('#', '');
+            fetch('${HOST_PATH}:${PORT_TWITCH_AUTH_CALLBACK}/token?' + payload)
+            .then(() => {
+                window.close();
+            });
+        </script>
+    </body>
+    `;
+    const DEFAULT_EVENTSUB_WS_URL = 'wss://eventsub.wss.twitch.tv/ws';
+    let latest_eventsub_ws_url = DEFAULT_EVENTSUB_WS_URL;
+    let create_ws = (url = null) => {
+        TwitchEventSubWebSocket = new ws_1.default((url === null)
+            ? DEFAULT_EVENTSUB_WS_URL
+            : url);
+        let ws = TwitchEventSubWebSocket;
+        ws.on('open', () => {
+            const reconnect = (url) => {
+                ws.close();
+                setTimeout(() => create_ws(url), 0);
+            };
+            ws.on('ping', () => ws.pong());
+            ws.on('message', (data, _is_bin) => {
+                let obj = JSON.parse(data.toString());
+                const MSG_WELCOME = "session_welcome";
+                const MSG_KEEPALIVE = "session_keepalive";
+                const MSG_RECONNECT = "session_reconnect";
+                const MSG_NOTIFICATION = "notification";
+                const msg_type = obj["metadata"]["message_type"];
+                switch (msg_type) {
+                    case MSG_WELCOME: {
+                        greenPut('Successfuly connected to Twitch EventSub WebSocket.\n');
+                        ws_session_id = obj["payload"]["session"]["id"];
+                        return;
+                    }
+                    case MSG_KEEPALIVE: {
+                        return;
+                    }
+                    case MSG_RECONNECT: {
+                        warnPut('Received reconnection message from Twich EventSub WebSocket.\n');
+                        latest_eventsub_ws_url = obj["payload"]["session"]["reconnect_url"];
+                        reconnect(latest_eventsub_ws_url);
+                        return;
+                    }
+                    case MSG_NOTIFICATION: {
+                        handleTwitchEvent(obj);
+                        return;
+                    }
+                    default:
+                        break;
+                }
+            });
+            ws.on('error', (err) => {
+                errPut('Error: Twitch Events WebSocket experienced an error.');
+                console.log(err);
+                reconnect(latest_eventsub_ws_url);
+            });
+            ws.on('close', (code, reason) => {
+                put(`Closed Twitch Events WebSocket with message: ${code} ${reason.toString()}`);
+                TwitchEventSubWebSocket = null;
+            });
+        });
+    };
+    create_ws();
+    let server = http.createServer();
+    server.listen(PORT_TWITCH_AUTH_CALLBACK, HOST_PATH, () => {
+        const REQUEST_SUCCESS = 200;
+        const REQUEST_FAILURE = 400;
+        server.on('request', (req, res) => {
+            if (req.url?.includes('/callback', 0)) {
+                res.statusCode = REQUEST_SUCCESS;
+                res.end(callback_script);
+            }
+            else if (req.url?.includes('/token', 0)) {
+                greenPut('Received Auth token from Twitch API\n');
+                let url_query = url.parse(req.url, true).query;
+                user_token = url_query.access_token?.toString();
+                user_id_token = url_query.id_token?.toString();
+                subscribeToEvents(user_id, user_token, ws_session_id);
+                res.statusCode = REQUEST_SUCCESS;
+                res.end('');
+                server = undefined;
+            }
+            else {
+                res.statusCode = REQUEST_FAILURE;
+                res.end('');
+            }
+        });
+    });
+    getTwitchUserAccessToken();
+}
+function handleTwitchEvent(obj) {
+    const event_type = obj["metadata"]["subscription_type"];
+    const user_name = obj["payload"]["event"]["user_name"];
+    switch (event_type) {
+        case EVENT_FOLLOW: {
+            wAIfu.command_queue.push(`!say Thank you ${user_name} for following my channel!`);
+            return;
+        }
+        case EVENT_SUBSCRIBE: {
+            let was_gifted = obj["payload"]["event"]["is_gift"];
+            if (was_gifted === true)
+                return;
+            let sub_tier = obj["payload"]["event"]["tier"];
+            wAIfu.command_queue.push(`!say Thank you ${user_name} for your tier ${sub_tier} sub to my channel!`);
+            return;
+        }
+        case EVENT_GIFT_SUB: {
+            let anonymous = obj["payload"]["event"]["is_anonymous"];
+            let sub_tier = obj["payload"]["event"]["tier"];
+            let total = obj["payload"]["event"]["total"];
+            wAIfu.command_queue.push(`!say Thank you ${(anonymous) ? 'anonymous' : user_name} for your ${total} tier ${sub_tier} gifted subs to my channel!`);
+            return;
+        }
+        case EVENT_BITS: {
+            let anonymous = obj["payload"]["event"]["is_anonymous"];
+            let bits = obj["payload"]["event"]["bits"];
+            wAIfu.command_queue.push(`!say Thank you ${(anonymous) ? 'anonymous' : user_name} for the ${bits} bits!`);
+            return;
+        }
+        case EVENT_RAID: {
+            let from = obj["payload"]["event"]["from_broadcaster_user_name"];
+            wAIfu.command_queue.push(`!say Thank you ${from} for the raid!`);
+            return;
+        }
+        default:
+            break;
+    }
 }

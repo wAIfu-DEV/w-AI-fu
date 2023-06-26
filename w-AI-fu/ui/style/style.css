@@ -12,6 +12,11 @@ html {
     color: rgb(200, 210, 220);
 }
 
+body {
+    background-color: rgb(20, 25, 30);
+    color: rgb(200, 210, 220);
+}
+
 body * {
     display: block;
 }
@@ -223,6 +228,8 @@ ConsoleNameField {
     padding: .75rem;
     border-right: solid 1px rgb(50, 60, 70);
     border-radius: 0px 0px 0px 1rem;
+    outline-color: rgb(50, 60, 70);
+    background-color: rgb(17, 22, 27);
 }
 
 ConsoleNameField:focus {
@@ -233,9 +240,11 @@ ConsoleInputField {
     padding: .75rem;
     padding-bottom: calc(.75rem - 5px);
     border-right: solid 1px rgb(50, 60, 70);
+    outline-color: rgb(50, 60, 70);
     flex-grow: 1;
     overflow-x: scroll;
     white-space: nowrap;
+    background-color: rgb(17, 22, 27);
 }
 
 ConsoleInputField:focus {
@@ -295,7 +304,9 @@ InputField {
     min-height: 1rem;
     padding: .5rem;
     border: solid 1px rgb(50, 60, 70);
+    outline-color: rgb(50, 60, 70);
     border-radius: .5rem;
+    background-color: rgb(17, 22, 27);
 }
 
 InputField:focus {
@@ -381,8 +392,10 @@ FlipFlop[value="on"]:hover {
     min-height: 1rem;
     padding: .5rem .75rem;
     border: solid 1px rgb(50, 60, 70);
+    outline-color: rgb(50, 60, 70);
     width: 1.5rem;
     text-align: center;
+    background-color: rgb(17, 22, 27);
 }
 
 .NumberInputBox:focus {
@@ -396,8 +409,10 @@ FlipFlop[value="on"]:hover {
     min-height: 1rem;
     padding: .5rem .75rem;
     border: solid 1px rgb(50, 60, 70);
+    outline-color: rgb(50, 60, 70);
     width: 15rem;
     text-align: center;
+    background-color: rgb(17, 22, 27);
 }
 
 .TextInputBox:focus {
@@ -576,6 +591,31 @@ InputLine > InputField {
 }
 
 .BigRedButton:hover {
+    color: white;
+    background-color: rgb(122, 42, 78);
+    border-color: rgb(122, 42, 78);
+}
+
+nav {
+    display: flex;
+    border-bottom: solid 1px rgb(50, 60, 70);
+}
+
+NavButton {
+    text-align: center;
+    flex-grow: 1;
+    cursor: pointer;
+    display: inline-block;
+    padding: .75rem;
+    border: solid 0px rgb(50, 60, 70);
+    border-right: solid 1px rgb(50, 60, 70);
+}
+
+NavButton:hover {
+    background-color: rgb(50, 60, 70);
+}
+
+NavButton:active {
     color: white;
     background-color: rgb(122, 42, 78);
     border-color: rgb(122, 42, 78);

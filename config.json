@@ -6,14 +6,13 @@
     "read_live_chat": false,
     "monologue": false,
     "tts_use_playht": false,
-    "chat_read_timeout_sec": 3,
+    "chat_read_timeout_sec": 2,
     "twitch_channel_name": "",
     "filter_bad_words": true,
     "audio_device": -1,
     "audio_device_other": -1,
     "use_clio_model": false,
-    "monologue_chance": 100,
-    "chatter_blacklist": [
-        "test"
-    ]
+    "monologue_chance": 50,
+    "tts_volume_modifier": 10,
+    "chatter_blacklist": []
 }

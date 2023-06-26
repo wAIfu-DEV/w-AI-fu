@@ -1,8 +1,7 @@
 import base64
-from os import system
 import sys
 
-from typing import List, Optional
+from typing import List
 from boilerplate import API
 
 from novelai_api.BanList import BanList
@@ -27,7 +26,7 @@ bad_words: BanList = BanList(':', ' :', '::', ' ::', '*:', ';', ' ;', ';;', ' ;;
 
 
 @app.route('/loaded', methods=['GET'])
-async def loaded():
+def loaded():
     return '', 200
 
 @app.route('/api', methods=['POST'])
@@ -51,15 +50,13 @@ async def generate(custom_prompt, craziness, creativity, max_output_length, is_c
         model = Model.Euterpe
         if is_clio_model == True:
             model = Model.Clio
-            
+        
         #preset = Preset.from_default(model)
-        #preset = Preset.from_official(model, "Basic Coherence")
         #preset = Preset.from_official(model, "Moonlit Chronicler")
         #preset = Preset.from_official(model, "Top Gun Beta")
         preset = Preset.from_official(model, "Basic Coherence")
         if is_clio_model == True:
             preset = Preset.from_official(model, "Long Press")
-        
         
         preset["max_length"] = max_output_length #120
         preset["min_length"] = 1 #1
@@ -69,14 +66,11 @@ async def generate(custom_prompt, craziness, creativity, max_output_length, is_c
         #preset["repetition_penalty_range"] = 2048 #2048
         #preset["repetition_penalty_slope"] = 0.2 #0.33
         #preset["tail_free_sampling"] = 0.87 #0.87
-
         preset["temperature"] = creativity + 1 #0.6 #0.585
-            
         #preset["top_k"] = 0 #0
         #preset["top_p"] = 1 #1
         #preset["top_a"] = 0.85 #1
         #preset["typical_p"] = 1 #1
-
         preset["stop_sequences"] = [[198], [628], [25]] # FOR EUTERP
         if is_clio_model == True:
             preset["stop_sequences"] = [[85], [49287]] # FOR CLIO
@@ -101,6 +95,4 @@ if __name__ == '__main__':
     for s in bw.splitlines():
         bad_words += ' ' + s
 
-    app.run(host='127.0.0.1', port=7840)
-
-
+    app.run(host='127.0.0.1', port=int(sys.argv[1]))

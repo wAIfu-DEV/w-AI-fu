@@ -20,11 +20,11 @@ app.logger.disabled = True
 interrupt_next = False
 
 @app.route('/loaded', methods=['GET'])
-async def loaded():
+def loaded():
     return '', 200
 
 @app.route('/interrupt', methods=['GET'])
-async def interrupt():
+def interrupt():
     global interrupt_next
     interrupt_next = True
     return '', 200
@@ -42,7 +42,7 @@ async def api():
         print(e, file=sys.stderr)
         response = jsonify({'message': 'GENERATION_ERROR'})
         response.headers.add("Access-Control-Allow-Origin", "*")
-        return response, 500 
+        return response, 500
 
     if play_tts(test_device=data['data'][2]) == True:
         response = jsonify({'message': 'OK'})
@@ -72,13 +72,6 @@ async def generate_tts(speak, voice_seed):
         with open('tts.mp3', 'wb') as f:
             f.write(tts)
 
-def list_devices():
-    p = pyaudio.PyAudio()
-    device_count = p.get_device_count()
-    for i in range(0, device_count):
-        info = p.get_device_info_by_index(i)
-        print("Device {} = {}".format(info["index"], info["name"]))
-
 def play_tts(test_device = None):
     global audio, interrupt_next, device_index
     interrupt_next = False
@@ -88,7 +81,7 @@ def play_tts(test_device = None):
     if not os.path.isfile(path):
         print(f'Could not find ffmpeg at {path}. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead: https://github.com/wAIfu-DEV/w-AI-fu/releases', file=sys.stderr)
     
-    os.system(f'"{path}" -loglevel quiet -y -i tts.mp3 tts.wav')
+    os.system(f'{path} -loglevel quiet -y -i tts.mp3 -filter:a "volume=10dB" tts.wav')
 
     final_device = device_index
     if test_device != None:
@@ -127,6 +120,6 @@ if __name__ == '__main__':
     obj = json.loads(f.read())
     f.close()
     device_index = int(obj["audio_device"])
-    app.run(host='127.0.0.1', port=7850)
+    app.run(host='127.0.0.1', port=int(sys.argv[1]))
 
 

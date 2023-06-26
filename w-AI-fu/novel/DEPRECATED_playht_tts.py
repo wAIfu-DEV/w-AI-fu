@@ -1,3 +1,7 @@
+#
+# DEPRECATED
+#
+
 # CREDITS
 #   Code provided by xxandeer https://github.com/xxandeer
 

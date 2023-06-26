@@ -65,7 +65,7 @@ class DOM {
 }
 
 /** @type {WebSocket} */
-const ws = new WebSocket('ws://127.0.0.1:7870');
+const ws = new WebSocket('ws://127.0.0.1:7770');
 let config = {};
 let chara = {};
 let auth = {};
@@ -157,8 +157,10 @@ DOM.query('AuthSaveButton').on('click', () => {
         "novel-mail": getValueById("novel-mail"),
         "novel-pass": getValueById("novel-pass"),
         "twitch-oauth": getValueById("twitch-oauth"),
-        "playht-auth": getValueById("playht-auth"),
-        "playht-user": getValueById("playht-user")
+        "twitchapp-clientid": getTextById("twitchapp-clientid"),
+        "twitchapp-secret": getTextById("twitchapp-secret"),
+        /*"playht-auth": getValueById("playht-auth"),
+        "playht-user": getValueById("playht-user")*/
     }
     ws.send('AUTH_SET ' + JSON.stringify(auth));
     ws.send('CONFIG ' + JSON.stringify(config));
@@ -228,7 +230,8 @@ DOM.query('CharacterSaveButton').on('click', async() => {
         "voice": DOM.getId('char_voice').get('textContent'),
         "topics": DOM.getId('char_topics').get('textContent').split(/, |,/g).filter((v) => v !== undefined && v !== ''),
         "craziness": Number(DOM.getId('craziness').get('value')),
-        "creativity": Number(DOM.getId('creativity').get('value'))
+        "creativity": Number(DOM.getId('creativity').get('value')),
+        "max_output_length": Number(DOM.getId('output-length').get('value'))
     };
     ws.send('CHARA ' + JSON.stringify(new_chara));
     setConfig('character_name', new_chara.char_name);
@@ -282,17 +285,28 @@ DOM.query('FlipFlop[config="tts_use_playht"]').self((ref) => {
     });
 });
 
+function showAuth(ref) {
+    const authsec = document.querySelector('Auth');
+    if (confirm('This section should never be on screen while live,\nare you sure you want to continue?')) {
+        authsec.style.display = 'block';
+        ref.set('textContent', 'Shrink ▴');
+        setTimeout(window.scrollTo(0, document.body.scrollHeight),0);
+    }
+}
+
+function hideAuth(ref) {
+    const authsec = document.querySelector('Auth');
+    authsec.style.display = 'none';
+    ref.set('textContent', 'Expand ▾');
+}
+
 DOM.query('DisplayAuthButton').self((ref) => {
     ref.on('click', () => {
         const authsec = document.querySelector('Auth');
         if (authsec.style.display !== 'none') {
-            authsec.style.display = 'none';
-            ref.set('textContent', 'Expand ▾');
-        }
-        else if (confirm('This section should never be on screen while live,\nare you sure you want to continue?')) {
-            authsec.style.display = 'block';
-            ref.set('textContent', 'Shrink ▴');
-            setTimeout(window.scrollTo(0, document.body.scrollHeight),0);
+            hideAuth(ref);
+        } else {
+            showAuth(ref);
         }
     });
 });
@@ -313,6 +327,61 @@ DOM.query('input[config="monologue_chance"]').self(ref => {
         if (ref.get('value') === '') return;
         setConfig(ref.element.getAttribute('config'), Number(ref.get('value')));
     });
+});
+
+DOM.getId('nav-console').on('click', () => {
+    hideAuth(DOM.query('DisplayAuthButton'));
+    DOM.queryAll('section[class="page"]').forEach(page => {
+        if (page.element.id === 'console-section') {
+            page.element.style.display = "block";
+        } else {
+            page.element.style.display = "none";
+        }
+    });
+});
+
+DOM.getId('nav-config').on('click', () => {
+    hideAuth(DOM.query('DisplayAuthButton'));
+    DOM.queryAll('section[class="page"]').forEach(page => {
+        if (page.element.id === 'configuration-section') {
+            page.element.style.display = "block";
+        } else {
+            page.element.style.display = "none";
+        }
+    });
+});
+
+DOM.getId('nav-chara').on('click', () => {
+    hideAuth(DOM.query('DisplayAuthButton'));
+    DOM.queryAll('section[class="page"]').forEach(page => {
+        if (page.element.id === 'character-section') {
+            page.element.style.display = "block";
+        } else {
+            page.element.style.display = "none";
+        }
+    });
+});
+
+DOM.getId('nav-chara').on('click', () => {
+    hideAuth(DOM.query('DisplayAuthButton'));
+    DOM.queryAll('section[class="page"]').forEach(page => {
+        if (page.element.id === 'character-section') {
+            page.element.style.display = "block";
+        } else {
+            page.element.style.display = "none";
+        }
+    });
+});
+
+DOM.getId('nav-account').on('click', () => {
+    hideAuth(DOM.query('DisplayAuthButton'));
+    DOM.queryAll('section[class="page"]').forEach(page => {
+        if (page.element.id === 'accounts-section') {
+            page.element.style.display = "block";
+        } else {
+            page.element.style.display = "none";
+        }
+    })
 });
 
 const nb_s = document.querySelector('input[config="chat_read_timeout_sec"]');
@@ -353,8 +422,10 @@ async function getAuth() {
             setValueById('novel-mail', data['novel-mail']);
             setValueById('novel-pass', data['novel-pass']);
             setValueById('twitch-oauth', data['twitch-oauth']);
-            setValueById('playht-auth', data['playht-auth']);
-            setValueById('playht-user', data['playht-user']);
+            setValueById('twitchapp-clientid', data['twitchapp-clientid']);
+            setValueById('twitchapp-secret', data['twitchapp-secret']);
+            /*setValueById('playht-auth', data['playht-auth']);
+            setValueById('playht-user', data['playht-user']);*/
             ws.removeEventListener('auth', el);
             resolve();
         };
@@ -415,7 +486,7 @@ function addFilteredBubble(filtered, text) {
             <ConsoleBubbleFiltered>
                 [ FILTERED ]
                 <span>
-                    <p class="short-p">${filtered.trim()}</p> in
+                    <p class="short-p">${filtered.join(', ')}</p> in
                 </span>
                 <p>${text.trim()}</p>
                 <FilteredOptionsButton onclick="ws.send('INTERRUPT');sendCommand(\'!say ${text.trim().replaceAll(/[^a-zA-Z,.!? 0-9]/g, '')}\');">
@@ -492,6 +563,8 @@ function setLatestData() {
     document.getElementById('craziness-label').textContent = String(chara.craziness);
     document.getElementById('creativity').value = chara.creativity;
     document.getElementById('creativity-label').textContent = String(chara.creativity);
+    document.getElementById('output-length').value = chara.max_output_length;
+    document.getElementById('output-length-label').textContent = String(chara.max_output_length);
     const h = document.querySelector('FlipFlop[config="is_voice_input"]');
     h.textContent = (config.is_voice_input) ? 'on' : 'off';
     h.setAttribute('value', h.textContent);
@@ -499,7 +572,7 @@ function setLatestData() {
     i.textContent = (config.read_live_chat) ? 'on' : 'off';
     i.setAttribute('value', i.textContent);
     const j = document.querySelector('FlipFlop[config="tts_use_playht"]');
-    j.textContent = (config.tts_use_playht) ? 'Play.ht' : 'NovelAI';
+    j.textContent = /*(config.tts_use_playht) ? 'Play.ht' :*/ 'NovelAI';
     j.setAttribute('value', j.textContent);
     const k = document.querySelector('input[config="chat_read_timeout_sec"]');
     k.value = config.chat_read_timeout_sec;
@@ -543,6 +616,8 @@ function setLatestData() {
     }
     const s = document.querySelector('input[config="monologue_chance"]');
     s.value = config.monologue_chance;
+    const t = document.querySelector('input[config="tts_volume_modifier"]');
+    t.value = config.tts_volume_modifier;
 }
 
 function flipFlipFlop(element) {
@@ -655,6 +730,7 @@ function verifyAuth() {
         }
     }
 
+    /*
     if (config.tts_use_playht === true) {
         if (DOM.getId('playht-auth').get('value') === '') {
             addErrorBubble('Missing Play.ht auth token from Authentification');
@@ -664,6 +740,6 @@ function verifyAuth() {
             addErrorBubble('Missing Play.ht user token from Authentification');
             return false;
         }
-    }
+    }*/
     return true;
 }

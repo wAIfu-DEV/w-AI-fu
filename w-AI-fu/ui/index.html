@@ -14,7 +14,13 @@
         <h1>w-AI-fu</h1>
         <VersionString></VersionString>
     </Header>
-    <Section>
+    <nav>
+        <NavButton id="nav-console">Console</NavButton>
+        <NavButton id="nav-config">Configuration</NavButton>
+        <NavButton id="nav-chara">Character</NavButton>
+        <NavButton id="nav-account">Accounts</NavButton>
+    </nav>
+    <Section class="page" id="console-section">
         <h2>Console</h2>
         <Console>
             <ConsoleHead>
@@ -57,7 +63,7 @@
             </ConsoleCommands>
         </Console>
     </Section>
-    <Section>
+    <Section class="page" id="configuration-section" style="display: none;">
         <h2>Configuration</h2>
         <ConfigWrapper>
             <Config>
@@ -101,6 +107,11 @@
                     <Label>Parrot Mode</Label>
                     <FlipFlop flip="off" flop="on" value="off" config="parrot_mode">off</FlipFlop>
                 </ConfigLine>
+                <Spacer></Spacer>
+                <ConfigLine title="Increase or decrease the volume of the TTS. 10dB is best for maximum volume without clipping.">
+                    <Label>TTS Volume modifier (dB)</Label>
+                    <input class="NumberInputBox" inputmode="numeric" value="10" config="tts_volume_modifier">
+                </ConfigLine>
             </Config>
         </ConfigWrapper>
         <ConfigLong>
@@ -129,7 +140,7 @@
             <ConfigSaveButton class="BigRedButton">Confirm</ConfigSaveButton>
         </ConfigLong>
     </Section>
-    <Section>
+    <Section class="page" id="character-section" style="display: none;">
         <h2>Character</h2>
         <CharacterSheet>
             <Label>Name</Label>
@@ -173,31 +184,41 @@
             <CharacterDownloadButton>Download .json</CharacterDownloadButton>
         </CharacterSheet>
     </Section>
-    <Section id="accounts-section">
+    <Section class="page" id="accounts-section" style="display: none;">
         <AuthBanner>
             <h2>Accounts</h2>
             <p>Hidden for privacy, hit 'expand' to show</p>
             <DisplayAuthButton>Expand ▾</DisplayAuthButton>
         </AuthBanner>
         <Auth style="display: none;">
-            <ConfigLine>
+            <ConfigLine title="Mail adress used for NovelAI account creation">
                 <Label>NovelAI Mail</Label>
                 <input id="novel-mail" class="TextInputBox" type="email" value="" auth>
             </ConfigLine>
             <Spacer></Spacer>
-            <ConfigLine>
+            <ConfigLine title="NovelAI account password">
                 <Label>NovelAI Password</Label>
                 <input id="novel-pass" class="TextInputBox" type="password" value="" auth>
             </ConfigLine>
             <Spacer></Spacer>
-            <ConfigLine>
+            <ConfigLine title="Name of the Twitch channel you want to read chat from">
                 <Label>(OPTIONAL) Twitch Channel Name</Label>
                 <input id="twitch-name" class="TextInputBox" type="text" value="">
             </ConfigLine>
             <Spacer></Spacer>
-            <ConfigLine>
+            <ConfigLine title="Twitch Oauth token gotten from https://twitchapps.com/tmi/">
                 <Label>(OPTIONAL) Twitch OAuth Token</Label>
                 <input id="twitch-oauth" class="TextInputBox" type="password" value="" auth>
+            </ConfigLine>
+            <Spacer></Spacer>
+            <ConfigLine title="Twitch App Client ID gotten from https://dev.twitch.tv/">
+                <Label>(OPTIONAL) Twitch App Client ID</Label>
+                <input id="twitchapp-clientid" class="TextInputBox" type="password" value="" auth>
+            </ConfigLine>
+            <Spacer></Spacer>
+            <ConfigLine title="Twitch App Secret gotten from https://dev.twitch.tv/">
+                <Label>(OPTIONAL) Twitch App Secret</Label>
+                <input id="twitchapp-secret" class="TextInputBox" type="password" value="" auth>
             </ConfigLine>
             <Spacer style="display: none;"></Spacer>
             <ConfigLine style="display: none;">
