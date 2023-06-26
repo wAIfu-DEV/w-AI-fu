@@ -157,7 +157,7 @@ function wsCONFIG(data) {
         return;
     }
     fs.writeFileSync('../config.json', data);
-    wAIfu.should_reload = true;
+    wAIfu.command_queue.unshift('!reload');
 }
 function wsAUTH_GET() {
     UiWebSocket.send('AUTH ' + JSON.stringify({
@@ -175,7 +175,7 @@ function wsAUTH_SET(data) {
     setAuth('twitch_oauth', obj["twitch-oauth"]);
     setAuth('twitchapp_clientid', obj["twitchapp-clientid"]);
     setAuth('twitchapp_secret', obj["twitchapp-secret"]);
-    wAIfu.should_reload = true;
+    wAIfu.command_queue.unshift('!reload');
 }
 function wsCHARA(data) {
     const obj = JSON.parse(data);
@@ -183,7 +183,7 @@ function wsCHARA(data) {
     wAIfu.character = obj;
     fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
     fs.writeFileSync('../config.json', JSON.stringify(wAIfu.config));
-    wAIfu.should_reload = true;
+    wAIfu.command_queue.unshift('!reload');
 }
 function wsDEVICE(data) {
     const obj = JSON.parse(data);
@@ -246,7 +246,6 @@ class wAIfuApp {
     memory = new Memory();
     audio_devices = {};
     init_cycle = 0;
-    should_reload = false;
     is_paused = false;
 }
 const wAIfu = new wAIfuApp();
@@ -280,10 +279,6 @@ async function main() {
         const inputObj = await getInput(wAIfu.input_mode);
         if (inputObj === null)
             continue main_loop;
-        if (wAIfu.should_reload === true) {
-            await handleCommand('!reload');
-            wAIfu.should_reload = false;
-        }
         const { input, sender, pseudo } = inputObj;
         const is_chat = sender === 'CHAT';
         const handled = (is_chat)
@@ -339,7 +334,7 @@ async function main() {
         }
         const tts_response = await sendToTTS(displayed);
         if (tts_response === null) {
-            await reinit();
+            await handleCommand('!reload');
         }
         continue;
     }
@@ -407,6 +402,11 @@ async function reinit() {
     put('Getting audio devices ...\n');
     getDevices();
     await summonProcesses(wAIfu.input_mode);
+    if (wAIfu.config.read_live_chat) {
+        put('Connecting to the Twitch API ...\n');
+        connectTwitchChatWebSocket();
+        await connectTwitchEventSub();
+    }
 }
 function flattenMemory(additional) {
     put("mem: " + wAIfu.memory.short_term.length + "\n");
@@ -1105,6 +1105,14 @@ async function closeSubProcesses() {
     await killProc(LLM, 'LLM');
     await killProc(TTS, 'TTS');
     await killProc(STT, 'STT');
+    if (TwitchChatWebSocket !== null && TwitchChatWebSocket.readyState !== ws_1.default.CLOSED) {
+        TwitchChatWebSocket.close();
+        TwitchChatWebSocket = null;
+    }
+    if (TwitchEventSubWebSocket !== null && TwitchEventSubWebSocket.readyState !== ws_1.default.CLOSED) {
+        TwitchEventSubWebSocket.close();
+        TwitchEventSubWebSocket = null;
+    }
 }
 function killProc(proc, proc_name) {
     return new Promise((resolve) => {
@@ -1414,7 +1422,7 @@ function connectTwitchChatWebSocket() {
         ws.send(`JOIN #${wAIfu.config.twitch_channel_name}`);
     });
     ws.on('close', (code, reason) => {
-        put(`Closed Twitch Chat WebSocket with message: ${code} ${reason.toString()}`);
+        put(`Closed Twitch Chat WebSocket with message: ${code} ${reason.toString()}\n`);
         TwitchChatWebSocket = null;
     });
     ws.on('error', (err) => {
@@ -1577,7 +1585,7 @@ async function connectTwitchEventSub() {
                 reconnect(latest_eventsub_ws_url);
             });
             ws.on('close', (code, reason) => {
-                put(`Closed Twitch Events WebSocket with message: ${code} ${reason.toString()}`);
+                put(`Closed Twitch Events WebSocket with message: ${code} ${reason.toString()}\n`);
                 TwitchEventSubWebSocket = null;
             });
         });
@@ -1600,6 +1608,7 @@ async function connectTwitchEventSub() {
                 subscribeToEvents(user_id, user_token, ws_session_id);
                 res.statusCode = REQUEST_SUCCESS;
                 res.end('');
+                server?.close();
                 server = undefined;
             }
             else {

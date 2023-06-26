@@ -173,7 +173,8 @@ function wsCONFIG(data: string): void {
     }
     fs.writeFileSync('../config.json', data);
 
-    wAIfu.should_reload = true;
+    wAIfu.command_queue.unshift('!reload');
+    //wAIfu.should_reload = true;
 }
 
 /**
@@ -203,7 +204,8 @@ function wsAUTH_SET(data: string): void {
     setAuth('twitchapp_secret', obj["twitchapp-secret"]);
     /*setAuth('play-ht_auth', obj["playht-auth"]);
     setAuth('play-ht_user', obj["playht-user"]);*/
-    wAIfu.should_reload = true;
+    wAIfu.command_queue.unshift('!reload');
+    //wAIfu.should_reload = true;
 }
 
 /** Handles changes to the character from the webui */
@@ -213,7 +215,8 @@ function wsCHARA(data: string): void {
     wAIfu.character = obj;
     fs.writeFileSync(`../UserData/characters/${obj.char_name}.json`, data);
     fs.writeFileSync('../config.json', JSON.stringify(wAIfu.config));
-    wAIfu.should_reload = true;
+    wAIfu.command_queue.unshift('!reload');
+    //wAIfu.should_reload = true;
 }
 
 /** Handles change of audio device from webui */
@@ -326,7 +329,7 @@ class wAIfuApp {
     /** Keeps track of number of reloads */
     init_cycle: number = 0;
     /** Weither to reload on next input loop */
-    should_reload: boolean = false;
+    //should_reload: boolean = false;
     is_paused: boolean = false;
 }
 /** Singleton of the application's state */
@@ -381,10 +384,10 @@ async function main(): Promise<void> {
         const inputObj = await getInput(wAIfu.input_mode);
         if (inputObj === null) continue main_loop;
 
-        if (wAIfu.should_reload === true) {
+        /*if (wAIfu.should_reload === true) {
             await handleCommand('!reload');
             wAIfu.should_reload = false;
-        }
+        }*/
 
         const { input, sender, pseudo } = inputObj;
         const is_chat: boolean = sender === 'CHAT';
@@ -465,7 +468,7 @@ async function main(): Promise<void> {
         /** Speaks the response */
         const tts_response = await sendToTTS(displayed);
         if (tts_response === null) {
-            await reinit();
+            await handleCommand('!reload');
         }
         continue;
     }
@@ -551,6 +554,11 @@ async function reinit() {
     put('Getting audio devices ...\n');
     getDevices();
     await summonProcesses(wAIfu.input_mode);
+    if (wAIfu.config.read_live_chat) {
+        put('Connecting to the Twitch API ...\n');
+        connectTwitchChatWebSocket();
+        await connectTwitchEventSub();
+    }
 }
 
 /**
@@ -1502,6 +1510,14 @@ async function closeSubProcesses(): Promise<void> {
     await killProc(LLM, 'LLM');
     await killProc(TTS, 'TTS');
     await killProc(STT, 'STT');
+    if (TwitchChatWebSocket !== null && TwitchChatWebSocket.readyState !== WebSocket.CLOSED) {
+        TwitchChatWebSocket.close();
+        TwitchChatWebSocket = null;
+    }
+    if (TwitchEventSubWebSocket !== null && TwitchEventSubWebSocket.readyState !== WebSocket.CLOSED) {
+        TwitchEventSubWebSocket.close();
+        TwitchEventSubWebSocket = null;
+    }
 }
 
 /**
@@ -1898,7 +1914,7 @@ function connectTwitchChatWebSocket() {
         ws.send(`JOIN #${wAIfu.config.twitch_channel_name}`);
     })
     ws.on('close', (code: number, reason: Buffer) => {
-        put(`Closed Twitch Chat WebSocket with message: ${code} ${reason.toString()}`);
+        put(`Closed Twitch Chat WebSocket with message: ${code} ${reason.toString()}\n`);
         TwitchChatWebSocket = null;
     });
     ws.on('error', (err: Error) => {
@@ -2078,7 +2094,7 @@ async function connectTwitchEventSub() {
                 reconnect(latest_eventsub_ws_url);
             });
             ws.on('close', (code: number, reason: Buffer) => {
-                put(`Closed Twitch Events WebSocket with message: ${code} ${reason.toString()}`);
+                put(`Closed Twitch Events WebSocket with message: ${code} ${reason.toString()}\n`);
                 TwitchEventSubWebSocket = null;
             });
         });
@@ -2103,6 +2119,7 @@ async function connectTwitchEventSub() {
                 subscribeToEvents(user_id, user_token, ws_session_id);
                 res.statusCode = REQUEST_SUCCESS;
                 res.end('');
+                server?.close();
                 server = undefined; // Hopefully memory is cleaned
             }
             else {
