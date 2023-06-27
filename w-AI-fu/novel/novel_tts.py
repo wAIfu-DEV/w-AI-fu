@@ -12,6 +12,7 @@ import logging
 app = Flask(__name__)
 audio = pyaudio.PyAudio()
 device_index = 0
+volume_modifier = 10
 
 log = logging.getLogger('werkzeug')
 log.disabled = True
@@ -73,7 +74,7 @@ async def generate_tts(speak, voice_seed):
             f.write(tts)
 
 def play_tts(test_device = None):
-    global audio, interrupt_next, device_index
+    global audio, interrupt_next, device_index, volume_modifier
     interrupt_next = False
     # Convert .mp3 to .wav
     path = os.path.abspath('../ffmpeg/ffmpeg.exe')
@@ -81,7 +82,7 @@ def play_tts(test_device = None):
     if not os.path.isfile(path):
         print(f'Could not find ffmpeg at {path}. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead: https://github.com/wAIfu-DEV/w-AI-fu/releases', file=sys.stderr)
     
-    os.system(f'{path} -loglevel quiet -y -i tts.mp3 -filter:a "volume=10dB" tts.wav')
+    os.system(f'{path} -loglevel quiet -y -i tts.mp3 -filter:a "volume={volume_modifier}dB" tts.wav')
 
     final_device = device_index
     if test_device != None:
@@ -120,6 +121,7 @@ if __name__ == '__main__':
     obj = json.loads(f.read())
     f.close()
     device_index = int(obj["audio_device"])
+    volume_modifier = int(obj["tts_volume_modifier"])
     app.run(host='127.0.0.1', port=int(sys.argv[1]))
 
 

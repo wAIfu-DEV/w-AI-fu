@@ -55,7 +55,7 @@ try {
     UiWebSocketServer = new ws_1.WebSocketServer({ host: HOST_PATH, port: PORT_WSS + PORT_OFFSET });
 }
 catch (e) {
-    errPut('Critical Error: Cannot run more than 1 instance of w-AI-fu. This might change in the future.');
+    errPut('Critical Error: Cannot run more than 1 instance of w-AI-fu. This feature might change in the future.');
     closeProgram(ErrorCode.Critical);
     process.exit(ErrorCode.Critical);
 }
@@ -1413,6 +1413,14 @@ function isOfClass(x, y) {
     return true;
 }
 function connectTwitchChatWebSocket() {
+    if (wAIfu.config.twitch_channel_name === undefined || wAIfu.config.twitch_channel_name === '') {
+        warnPut('Could not connect to Twitch Chat because of empty "Twitch Channel Name" in Accounts.\n');
+        return;
+    }
+    if (getAuth('twitch_oauth') === '') {
+        warnPut('Could not connect to Twitch Chat because of missing "Twitch Oauth Token" in Accounts.\n');
+        return;
+    }
     TwitchChatWebSocket = new ws_1.default('wss://irc-ws.chat.twitch.tv:443');
     let ws = TwitchChatWebSocket;
     let chat_started = false;
@@ -1460,6 +1468,10 @@ async function getTwitchAppAccessToken() {
         method: 'POST'
     });
     let resp = await req.json();
+    if (resp["access_token"] === undefined) {
+        warnPut('Failed to get Twitch App Access Token. This may be due to incorrect Twitch App ClientId or Secret.\n');
+        return '';
+    }
     return resp["access_token"];
 }
 function getTwitchUserAccessToken() {
@@ -1479,8 +1491,14 @@ async function getTwitchUID(login, apptoken) {
         }
     });
     let resp = await req.json();
-    greenPut('Obtained Twitch UID\n');
-    return resp["data"][0]["id"];
+    if (resp["data"][0]["id"] !== undefined) {
+        greenPut('Obtained Twitch UID\n');
+        return resp["data"][0]["id"];
+    }
+    else {
+        warnPut('Failed to get get Twitch UID.\n');
+        return '';
+    }
 }
 function subscribeToEventSub(event_name, version, condition = {}, user_token, session_id) {
     fetch('https://api.twitch.tv/helix/eventsub/subscriptions', {
@@ -1518,7 +1536,17 @@ function subscribeToEvents(user_id, user_token, session_id) {
 }
 async function connectTwitchEventSub() {
     let apptoken = await getTwitchAppAccessToken();
+    if (apptoken === '') {
+        warnPut('Could not connect to Twitch EventSub.\nw-AI-fu will continue without reading follows, subs and bits.\nFollow this tutorial to enable the feature: https://github.com/wAIfu-DEV/w-AI-fu/wiki/Follower,-Subscribers,-Bits-interactions\n');
+        return;
+    }
+    ;
     let user_id = await getTwitchUID(wAIfu.config.twitch_channel_name, apptoken);
+    if (user_id === '') {
+        warnPut('Could not connect to Twitch EventSub.\nw-AI-fu will continue without reading follows, subs and bits.\nFollow this tutorial to enable the feature: https://github.com/wAIfu-DEV/w-AI-fu/wiki/Follower,-Subscribers,-Bits-interactions\n');
+        return;
+    }
+    ;
     let user_token = '';
     let user_id_token = '';
     let ws_session_id = '';
