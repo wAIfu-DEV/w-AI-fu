@@ -44,24 +44,3 @@ You are now set to use w-AI-fu ! 🔥
 5. Activate/Deactivate repeating of user input
 6. Activate/Deactivate filtering of bad words (Required if you want to stream)
 7. Change audio output device
-
-## ↘️ FLOW GRAPH
-
-init	   ____________________________________________________
-|	      /						                                         \
-v       v							                                        |___________
-input loop_______________________			                        |	          \
-|				                         \				                    |	           |
-v				                          v				                    |	           |
-received input			              did not receive input		    |	           |
-|				                          |			          \	          |	           |
-v				                          v 			         v	        ^	           |
-is command?->do command stuff	    chat reading on	 chat reading off        |
-v				                          v		             v	 		                 |
-|<_____________________________< new chat	         no new chat 		         |
-|						                                       |	 		                 |
-v	   					                                     v			                 |
-send to LLM <____________________________________< monologue on		         |
-|									                                                         |
-v									                                                         |
-send to TTS >_____________________________________________________________/
