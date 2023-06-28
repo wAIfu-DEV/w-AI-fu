@@ -4,6 +4,8 @@ import pyaudio
 import wave
 import json
 
+import subprocess
+
 from boilerplate import API
 from flask import Flask, request, jsonify, make_response
 
@@ -82,7 +84,13 @@ def play_tts(test_device = None):
     if not os.path.isfile(path):
         print(f'Could not find ffmpeg at {path}. ffmpeg is not included in the w-AI-fu repository by default because of its size (> 100MB). If you cloned the repository, download the latest release instead: https://github.com/wAIfu-DEV/w-AI-fu/releases', file=sys.stderr)
     
-    os.system(f'{path} -loglevel quiet -y -i tts.mp3 -filter:a "volume={volume_modifier}dB" tts.wav')
+    #command = str(f'"{path}" -loglevel quiet -y -i tts.mp3 -filter:a "volume=10dB" tts.wav')
+    #print(command, sys.stdout)
+    #sys.stdout.flush()
+    #os.system(command)
+
+    p = subprocess.Popen([path, '-loglevel', 'quiet', '-y', '-i', 'tts.mp3', '-filter:a', f'volume={str(volume_modifier)}dB', 'tts.wav'])
+    p.wait()
 
     final_device = device_index
     if test_device != None:
