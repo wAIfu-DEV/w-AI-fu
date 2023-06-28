@@ -329,6 +329,13 @@ DOM.query('input[config="monologue_chance"]').self(ref => {
     });
 });
 
+DOM.query('input[config="tts_volume_modifier"]').self(ref => {
+    ref.on('change', () => {
+        if (ref.get('value') === '') return;
+        setConfig(ref.element.getAttribute('config'), Number(ref.get('value')));
+    });
+});
+
 DOM.getId('nav-console').on('click', () => {
     hideAuth(DOM.query('DisplayAuthButton'));
     DOM.queryAll('section[class="page"]').forEach(page => {
