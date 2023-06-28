@@ -15,6 +15,9 @@ Before running w-AI-fu, follow these steps:
 
 1. Install [NodeJS](https://nodejs.org/en/download/releases) (prefer v19.8.1)
 2. Install [Python](https://www.python.org/downloads/) (prefer 3.10.10)
+
+The following steps can be followed using this [Tutorial](https://www.youtube.com/watch?v=lpyk3n4KmB0)
+
 3. Download w-AI-fu from the [releases](https://github.com/wAIfu-DEV/w-AI-fu/releases) page
 4. Run INSTALL.bat in order to install dependencies
 5. Run the application by using the 'Run w-AI-fu' shortcut or 'run.bat' script. Once the WebUI is open, go to the end of the page and hit 'Expand'
