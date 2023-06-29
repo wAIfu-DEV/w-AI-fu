@@ -157,8 +157,8 @@ DOM.query('AuthSaveButton').on('click', () => {
         "novel-mail": getValueById("novel-mail"),
         "novel-pass": getValueById("novel-pass"),
         "twitch-oauth": getValueById("twitch-oauth"),
-        "twitchapp-clientid": getTextById("twitchapp-clientid"),
-        "twitchapp-secret": getTextById("twitchapp-secret"),
+        "twitchapp-clientid": getValueById("twitchapp-clientid"),
+        "twitchapp-secret": getValueById("twitchapp-secret"),
         /*"playht-auth": getValueById("playht-auth"),
         "playht-user": getValueById("playht-user")*/
     }
