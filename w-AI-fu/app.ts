@@ -1938,7 +1938,7 @@ function connectTwitchChatWebSocket() {
         }
     });
     ws.on('message', (data: WebSocket.RawData, _: boolean) => {
-        let msg = data.toString();
+        let msg: string = data.toString();
         if (msg.includes('PING')) {
             ws.send('PONG');
             return;
@@ -1948,9 +1948,9 @@ function connectTwitchChatWebSocket() {
             return;
         }
         if (chat_started) {
-            let last_msg = msg.split(/\r\n|\n/g)[0]!;
+            let last_msg: string = msg.split(/\r\n|\n/g)[0]!;
             wAIfu.new_chat_usr = Array.from(last_msg.matchAll(/(?<=^:)(.*?)(?=!)/g))[0]![0].toString()!;
-            wAIfu.new_chat_msg = Array.from(last_msg.matchAll(RegExp(`(?<=PRIVMSG #${wAIfu.config.twitch_channel_name} :)(.*)`, 'g')))[0]![0].toString()!;
+            wAIfu.new_chat_msg = Array.from(last_msg.matchAll(RegExp(`(?<=PRIVMSG #${wAIfu.config.twitch_channel_name.toLowerCase()} :)(.*)`, 'g')))[0]![0].toString()!;
         }
     });
 }
@@ -2085,7 +2085,7 @@ async function connectTwitchEventSub() {
             };
 
             ws.on('ping', () => ws.pong());
-            ws.on('message', (data: WebSocket.RawData, _is_bin) => {
+            ws.on('message', (data: WebSocket.RawData, _is_bin: any) => {
                 let obj = JSON.parse(data.toString());
 
                 const MSG_WELCOME = "session_welcome";
