@@ -9,3 +9,4 @@ SpeechRecognition==3.10.0
 websocket_client==1.5.1
 numpy==1.24.3
 twitchio==2.6.0
+Werkzeug==2.2.2
